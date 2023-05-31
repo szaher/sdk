@@ -16,11 +16,11 @@ import unittest
 import datetime
 
 from kubeflow.training.models import *
-from kubeflow.training.models.v1_replica_status import V1ReplicaStatus  # noqa: E501
+from kubeflow.training.models.kubeflow_org_v1_scheduling_policy import KubeflowOrgV1SchedulingPolicy  # noqa: E501
 from kubeflow.training.rest import ApiException
 
-class TestV1ReplicaStatus(unittest.TestCase):
-    """V1ReplicaStatus unit test stubs"""
+class TestKubeflowOrgV1SchedulingPolicy(unittest.TestCase):
+    """KubeflowOrgV1SchedulingPolicy unit test stubs"""
 
     def setUp(self):
         pass
@@ -29,25 +29,27 @@ class TestV1ReplicaStatus(unittest.TestCase):
         pass
 
     def make_instance(self, include_optional):
-        """Test V1ReplicaStatus
+        """Test KubeflowOrgV1SchedulingPolicy
             include_option is a boolean, when False only required
             params are included, when True both required and
             optional params are included """
-        # model = kubeflow.training.models.v1_replica_status.V1ReplicaStatus()  # noqa: E501
+        # model = kubeflow.training.models.kubeflow_org_v1_scheduling_policy.KubeflowOrgV1SchedulingPolicy()  # noqa: E501
         if include_optional :
-            return V1ReplicaStatus(
-                active = 56, 
-                failed = 56, 
-                label_selector = None, 
-                selector = '0', 
-                succeeded = 56
+            return KubeflowOrgV1SchedulingPolicy(
+                min_available = 56, 
+                min_resources = {
+                    'key' : None
+                    }, 
+                priority_class = '0', 
+                queue = '0', 
+                schedule_timeout_seconds = 56
             )
         else :
-            return V1ReplicaStatus(
+            return KubeflowOrgV1SchedulingPolicy(
         )
 
-    def testV1ReplicaStatus(self):
-        """Test V1ReplicaStatus"""
+    def testKubeflowOrgV1SchedulingPolicy(self):
+        """Test KubeflowOrgV1SchedulingPolicy"""
         inst_req_only = self.make_instance(include_optional=False)
         inst_req_and_optional = self.make_instance(include_optional=True)
 

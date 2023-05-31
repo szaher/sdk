@@ -1,4 +1,4 @@
-# V1ReplicaSpec
+# KubeflowOrgV1ReplicaSpec
 
 ReplicaSpec is a description of the replica
 ## Properties

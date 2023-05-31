@@ -16,11 +16,11 @@ import unittest
 import datetime
 
 from kubeflow.training.models import *
-from kubeflow.training.models.v1_job_status import V1JobStatus  # noqa: E501
+from kubeflow.training.models.kubeflow_org_v1_job_status import KubeflowOrgV1JobStatus  # noqa: E501
 from kubeflow.training.rest import ApiException
 
-class TestV1JobStatus(unittest.TestCase):
-    """V1JobStatus unit test stubs"""
+class TestKubeflowOrgV1JobStatus(unittest.TestCase):
+    """KubeflowOrgV1JobStatus unit test stubs"""
 
     def setUp(self):
         pass
@@ -29,16 +29,16 @@ class TestV1JobStatus(unittest.TestCase):
         pass
 
     def make_instance(self, include_optional):
-        """Test V1JobStatus
+        """Test KubeflowOrgV1JobStatus
             include_option is a boolean, when False only required
             params are included, when True both required and
             optional params are included """
-        # model = kubeflow.training.models.v1_job_status.V1JobStatus()  # noqa: E501
+        # model = kubeflow.training.models.kubeflow_org_v1_job_status.KubeflowOrgV1JobStatus()  # noqa: E501
         if include_optional :
-            return V1JobStatus(
+            return KubeflowOrgV1JobStatus(
                 completion_time = None, 
                 conditions = [
-                    V1JobCondition(
+                    kubeflow_org_v1_job_condition.KubeflowOrgV1JobCondition(
                         last_transition_time = None, 
                         last_update_time = None, 
                         message = '0', 
@@ -48,7 +48,7 @@ class TestV1JobStatus(unittest.TestCase):
                     ], 
                 last_reconcile_time = None, 
                 replica_statuses = {
-                    'key' : V1ReplicaStatus(
+                    'key' : kubeflow_org_v1_replica_status.KubeflowOrgV1ReplicaStatus(
                         active = 56, 
                         failed = 56, 
                         label_selector = None, 
@@ -58,9 +58,9 @@ class TestV1JobStatus(unittest.TestCase):
                 start_time = None
             )
         else :
-            return V1JobStatus(
+            return KubeflowOrgV1JobStatus(
                 conditions = [
-                    V1JobCondition(
+                    kubeflow_org_v1_job_condition.KubeflowOrgV1JobCondition(
                         last_transition_time = None, 
                         last_update_time = None, 
                         message = '0', 
@@ -69,7 +69,7 @@ class TestV1JobStatus(unittest.TestCase):
                         type = '0', )
                     ],
                 replica_statuses = {
-                    'key' : V1ReplicaStatus(
+                    'key' : kubeflow_org_v1_replica_status.KubeflowOrgV1ReplicaStatus(
                         active = 56, 
                         failed = 56, 
                         label_selector = None, 
@@ -78,8 +78,8 @@ class TestV1JobStatus(unittest.TestCase):
                     },
         )
 
-    def testV1JobStatus(self):
-        """Test V1JobStatus"""
+    def testKubeflowOrgV1JobStatus(self):
+        """Test KubeflowOrgV1JobStatus"""
         inst_req_only = self.make_instance(include_optional=False)
         inst_req_and_optional = self.make_instance(include_optional=True)
 

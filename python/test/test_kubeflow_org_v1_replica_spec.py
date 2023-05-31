@@ -16,11 +16,11 @@ import unittest
 import datetime
 
 from kubeflow.training.models import *
-from kubeflow.training.models.v1_scheduling_policy import V1SchedulingPolicy  # noqa: E501
+from kubeflow.training.models.kubeflow_org_v1_replica_spec import KubeflowOrgV1ReplicaSpec  # noqa: E501
 from kubeflow.training.rest import ApiException
 
-class TestV1SchedulingPolicy(unittest.TestCase):
-    """V1SchedulingPolicy unit test stubs"""
+class TestKubeflowOrgV1ReplicaSpec(unittest.TestCase):
+    """KubeflowOrgV1ReplicaSpec unit test stubs"""
 
     def setUp(self):
         pass
@@ -29,27 +29,23 @@ class TestV1SchedulingPolicy(unittest.TestCase):
         pass
 
     def make_instance(self, include_optional):
-        """Test V1SchedulingPolicy
+        """Test KubeflowOrgV1ReplicaSpec
             include_option is a boolean, when False only required
             params are included, when True both required and
             optional params are included """
-        # model = kubeflow.training.models.v1_scheduling_policy.V1SchedulingPolicy()  # noqa: E501
+        # model = kubeflow.training.models.kubeflow_org_v1_replica_spec.KubeflowOrgV1ReplicaSpec()  # noqa: E501
         if include_optional :
-            return V1SchedulingPolicy(
-                min_available = 56, 
-                min_resources = {
-                    'key' : None
-                    }, 
-                priority_class = '0', 
-                queue = '0', 
-                schedule_timeout_seconds = 56
+            return KubeflowOrgV1ReplicaSpec(
+                replicas = 56, 
+                restart_policy = '0', 
+                template = None
             )
         else :
-            return V1SchedulingPolicy(
+            return KubeflowOrgV1ReplicaSpec(
         )
 
-    def testV1SchedulingPolicy(self):
-        """Test V1SchedulingPolicy"""
+    def testKubeflowOrgV1ReplicaSpec(self):
+        """Test KubeflowOrgV1ReplicaSpec"""
         inst_req_only = self.make_instance(include_optional=False)
         inst_req_and_optional = self.make_instance(include_optional=True)
 

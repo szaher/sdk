@@ -16,11 +16,11 @@ import unittest
 import datetime
 
 from kubeflow.training.models import *
-from kubeflow.training.models.v1_replica_spec import V1ReplicaSpec  # noqa: E501
+from kubeflow.training.models.kubeflow_org_v1_replica_status import KubeflowOrgV1ReplicaStatus  # noqa: E501
 from kubeflow.training.rest import ApiException
 
-class TestV1ReplicaSpec(unittest.TestCase):
-    """V1ReplicaSpec unit test stubs"""
+class TestKubeflowOrgV1ReplicaStatus(unittest.TestCase):
+    """KubeflowOrgV1ReplicaStatus unit test stubs"""
 
     def setUp(self):
         pass
@@ -29,23 +29,25 @@ class TestV1ReplicaSpec(unittest.TestCase):
         pass
 
     def make_instance(self, include_optional):
-        """Test V1ReplicaSpec
+        """Test KubeflowOrgV1ReplicaStatus
             include_option is a boolean, when False only required
             params are included, when True both required and
             optional params are included """
-        # model = kubeflow.training.models.v1_replica_spec.V1ReplicaSpec()  # noqa: E501
+        # model = kubeflow.training.models.kubeflow_org_v1_replica_status.KubeflowOrgV1ReplicaStatus()  # noqa: E501
         if include_optional :
-            return V1ReplicaSpec(
-                replicas = 56, 
-                restart_policy = '0', 
-                template = None
+            return KubeflowOrgV1ReplicaStatus(
+                active = 56, 
+                failed = 56, 
+                label_selector = None, 
+                selector = '0', 
+                succeeded = 56
             )
         else :
-            return V1ReplicaSpec(
+            return KubeflowOrgV1ReplicaStatus(
         )
 
-    def testV1ReplicaSpec(self):
-        """Test V1ReplicaSpec"""
+    def testKubeflowOrgV1ReplicaStatus(self):
+        """Test KubeflowOrgV1ReplicaStatus"""
         inst_req_only = self.make_instance(include_optional=False)
         inst_req_and_optional = self.make_instance(include_optional=True)
 
