@@ -1,0 +1,11 @@
+# IDEs
+.vscode/
+__debug_bin
+.idea/
+.DS_Store
+.swp
+*~
+
+# Python cache files
+__pycache__/
+*.egg-info/
