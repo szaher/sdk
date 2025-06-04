@@ -15,9 +15,11 @@
 import inspect
 import os
 import queue
+import re
 import textwrap
 import threading
 from typing import Any, Callable, Dict, List, Optional, Tuple
+from urllib.parse import urlparse
 
 import kubeflow.trainer.models as models
 from kubeflow.trainer.constants import constants
@@ -327,6 +329,7 @@ def get_entrypoint_using_train_func(
 
 def get_args_using_torchtune_config(
     fine_tuning_config: types.TorchTuneConfig,
+    initializer: Optional[types.Initializer] = None,
 ) -> Tuple[List[str], List[str]]:
     """
     Get the Trainer args from the TorchTuneConfig.
@@ -351,6 +354,32 @@ def get_args_using_torchtune_config(
     # Override the loss if it is provided.
     if fine_tuning_config.loss:
         args.append(f"loss={fine_tuning_config.loss}")
+
+    # Override the data dir or data files if it is provided.
+    if isinstance(initializer, types.Initializer) and isinstance(
+        initializer.dataset, types.HuggingFaceDatasetInitializer
+    ):
+        storage_uri = (
+            "hf://" + initializer.dataset.storage_uri
+            if not initializer.dataset.storage_uri.startswith("hf://")
+            else initializer.dataset.storage_uri
+        )
+        storage_uri_parsed = urlparse(storage_uri)
+        relative_path = re.sub(r"^/[^/]+", "", storage_uri_parsed.path)
+
+        if "." in relative_path:
+            args.append(
+                f"dataset.data_files={os.path.join(constants.DATASET_PATH, relative_path)}"
+            )
+        else:
+            args.append(
+                f"dataset.data_dir={os.path.join(constants.DATASET_PATH, relative_path)}"
+            )
+
+    if fine_tuning_config.dataset_preprocess_config:
+        args += get_args_in_dataset_preprocess_config(
+            fine_tuning_config.dataset_preprocess_config
+        )
 
     return constants.DEFAULT_TORCHTUNE_COMMAND, args
 
@@ -390,6 +419,7 @@ def get_trainer_crd_from_custom_trainer(
 
 def get_trainer_crd_from_builtin_trainer(
     trainer: types.BuiltinTrainer,
+    initializer: Optional[types.Initializer] = None,
 ) -> models.TrainerV1alpha1Trainer:
     """
     Get the Trainer CRD from the builtin trainer.
@@ -413,7 +443,7 @@ def get_trainer_crd_from_builtin_trainer(
     # the torchtune config in the runtime plugin.
     # Ref:https://github.com/kubeflow/trainer/tree/master/docs/proposals/2401-llm-trainer-v2
     trainer_crd.command, trainer_crd.args = get_args_using_torchtune_config(
-        trainer.config
+        trainer.config, initializer
     )
 
     return trainer_crd
@@ -507,3 +537,53 @@ def get_log_queue_pool(log_streams: List[Any]) -> List[queue.Queue]:
         pool.append(q)
         threading.Thread(target=wrap_log_stream, args=(q, log_stream)).start()
     return pool
+
+
+def get_args_in_dataset_preprocess_config(
+    dataset_preprocess_config: types.TorchTuneInstructDataset,
+) -> List[str]:
+    """
+    Get the args from the given dataset preprocess config.
+    """
+    args = []
+
+    if not isinstance(dataset_preprocess_config, types.TorchTuneInstructDataset):
+        raise ValueError(
+            f"Invalid dataset preprocess config type: {type(dataset_preprocess_config)}."
+        )
+
+    # Override the dataset type field in the torchtune config.
+    args.append(f"dataset={constants.TORCHTUNE_INSTRUCT_DATASET}")
+
+    # Override the dataset source field if it is provided.
+    if dataset_preprocess_config.source:
+        if not isinstance(dataset_preprocess_config.source, types.DataFormat):
+            raise ValueError(
+                f"Invalid data format: {dataset_preprocess_config.source}."
+            )
+
+        args.append(f"dataset.source={dataset_preprocess_config.source}")
+
+    # Override the data dir or data files if it is provided.
+
+    # Override the split field if it is provided.
+    if dataset_preprocess_config.split:
+        args.append(f"dataset.split={dataset_preprocess_config.split}")
+
+    # Override the train_on_input field if it is provided.
+    if dataset_preprocess_config.train_on_input:
+        args.append(
+            f"dataset.train_on_input={dataset_preprocess_config.train_on_input}"
+        )
+
+    # Override the new_system_prompt field if it is provided.
+    if dataset_preprocess_config.new_system_prompt:
+        args.append(
+            f"dataset.new_system_prompt={dataset_preprocess_config.new_system_prompt}"
+        )
+
+    # Override the column_map field if it is provided.
+    if dataset_preprocess_config.column_map:
+        args.append(f"dataset.column_map={dataset_preprocess_config.column_map}")
+
+    return args
