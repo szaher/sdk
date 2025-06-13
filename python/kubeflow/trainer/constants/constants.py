@@ -94,6 +94,10 @@ JOBSET_RJOB_NAME_LABEL = "jobset.sigs.k8s.io/replicatedjob-name"
 # The label key to identify the Job completion index of the Pod.
 JOB_INDEX_LABEL = "batch.kubernetes.io/job-completion-index"
 
+# Label keys used by local training backends (Docker, Podman, subprocesses).
+LOCAL_TRAINJOB_LABEL = "trainer.kubeflow.org/trainjob-name"
+LOCAL_RUNTIME_LABEL = "trainer.kubeflow.org/runtime-name"
+
 # The Pod pending phase indicates that Pod has been accepted by the Kubernetes cluster,
 # but one or more of the containers has not been made ready to run.
 POD_PENDING = "Pending"

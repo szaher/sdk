@@ -243,7 +243,7 @@ class TrainerClient:
 
             if not self.backend:
                 raise RuntimeError("Backend is not configured")
-            self.backend.run(command, args)
+            self.backend.run(command, args, train_job_name, runtime.name)
             return train_job_name
 
         # Build the Trainer.
@@ -331,9 +331,12 @@ class TrainerClient:
         """
 
         if self.backend_type != "kubernetes":
-            raise NotImplementedError(
-                "list_jobs is only available for the kubernetes backend"
-            )
+            if not self.backend:
+                raise RuntimeError("Backend is not configured")
+            jobs = self.backend.list_jobs()
+            if runtime is not None:
+                jobs = [j for j in jobs if j.runtime.name == runtime.name]
+            return jobs
 
         result = []
         try:
@@ -379,9 +382,9 @@ class TrainerClient:
         """Get the TrainJob object"""
 
         if self.backend_type != "kubernetes":
-            raise NotImplementedError(
-                "get_job is only available for the kubernetes backend"
-            )
+            if not self.backend:
+                raise RuntimeError("Backend is not configured")
+            return self.backend.get_job(name)
 
         try:
             thread = self.custom_api.get_namespaced_custom_object(
@@ -418,9 +421,9 @@ class TrainerClient:
         """Get the logs from TrainJob"""
 
         if self.backend_type != "kubernetes":
-            raise NotImplementedError(
-                "get_job_logs is only available for the kubernetes backend"
-            )
+            if not self.backend:
+                raise RuntimeError("Backend is not configured")
+            return self.backend.get_job_logs(name)
 
         # Get the TrainJob Pod name.
         pod_name = None

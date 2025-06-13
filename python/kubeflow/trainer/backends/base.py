@@ -1,5 +1,7 @@
 from abc import ABC, abstractmethod
-from typing import List, Optional
+from typing import Dict, List, Optional
+
+from kubeflow.trainer.types import types
 
 
 class TrainingBackend(ABC):
@@ -9,7 +11,13 @@ class TrainingBackend(ABC):
         self.image = image
 
     @abstractmethod
-    def run(self, command: List[str], args: List[str]) -> int:
+    def run(
+        self,
+        command: List[str],
+        args: List[str],
+        job_name: str,
+        runtime_name: str,
+    ) -> int:
         """Run the provided command.
 
         Args:
@@ -19,4 +27,13 @@ class TrainingBackend(ABC):
         Returns:
             Exit code from the execution process.
         """
+        raise NotImplementedError
+
+    def list_jobs(self) -> List["types.TrainJob"]:
+        raise NotImplementedError
+
+    def get_job(self, name: str) -> "types.TrainJob":
+        raise NotImplementedError
+
+    def get_job_logs(self, name: str) -> Dict[str, str]:
         raise NotImplementedError
