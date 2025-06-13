@@ -35,7 +35,7 @@ from kubeflow.trainer.types.types import (
     Initializer,
     TorchTuneInstructDataset,
     Loss,
-    Runtime,
+    TrainingRuntime,
     Trainer,
     TrainerType,
     TorchTuneConfig,

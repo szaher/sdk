@@ -1,27 +1,25 @@
-import subprocess
-from typing import List, Optional
+from typing import Dict, List, Optional
+
+from podman import PodmanClient
 
 from .base import TrainingBackend
 
 
 class PodmanBackend(TrainingBackend):
-    """Backend using podman CLI to run training containers."""
+    """Backend using the Podman SDK to run training containers."""
 
-    def __init__(self, image: str, additional_args: Optional[List[str]] = None):
+    def __init__(self, image: str, run_kwargs: Optional[Dict] = None):
         super().__init__(image=image)
-        self.additional_args = additional_args or []
+        self.client = PodmanClient()
+        self.run_kwargs = run_kwargs or {}
 
     def run(self, command: List[str], args: List[str]) -> int:
-        podman_cmd = (
-            [
-                "podman",
-                "run",
-                "--rm",
-            ]
-            + self.additional_args
-            + [self.image]
-            + command
-            + args
+        container = self.client.containers.create(
+            self.image,
+            command + args,
+            **self.run_kwargs,
         )
-        proc = subprocess.run(podman_cmd, check=False)
-        return proc.returncode
+        container.start()
+        result = container.wait()
+        container.remove()
+        return result.get("StatusCode", 1)

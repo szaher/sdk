@@ -99,16 +99,16 @@ class TrainerClient:
         if backend_type == "docker":
             if "image" not in config:
                 raise ValueError("Docker backend requires 'image' in backend_config")
-            return DockerBackend(config["image"], config.get("args"))
+            return DockerBackend(config["image"], config.get("run_kwargs"))
         if backend_type == "podman":
             if "image" not in config:
                 raise ValueError("Podman backend requires 'image' in backend_config")
-            return PodmanBackend(config["image"], config.get("args"))
+            return PodmanBackend(config["image"], config.get("run_kwargs"))
         if backend_type == "subprocess":
             return SubprocessBackend(config.get("env"))
         raise ValueError(f"Unsupported backend type: {backend_type}")
 
-    def list_runtimes(self) -> List[types.Runtime]:
+    def list_runtimes(self) -> List[types.TrainingRuntime]:
         """List of the available Runtimes.
 
         Returns:
@@ -156,7 +156,7 @@ class TrainerClient:
 
         return result
 
-    def get_runtime(self, name: str) -> types.Runtime:
+    def get_runtime(self, name: str) -> types.TrainingRuntime:
         """Get the the Runtime object"""
 
         if self.backend_type != "kubernetes":
@@ -192,7 +192,7 @@ class TrainerClient:
 
     def train(
         self,
-        runtime: types.Runtime = types.DEFAULT_RUNTIME,
+        runtime: types.TrainingRuntime = types.DEFAULT_RUNTIME,
         initializer: Optional[types.Initializer] = None,
         trainer: Optional[types.CustomTrainer] = None,
     ) -> str:
@@ -203,7 +203,7 @@ class TrainerClient:
             the entire model training process, e.g. `CustomTrainer`.
 
         Args:
-            runtime (`types.Runtime`): Reference to one of existing Runtimes.
+            runtime (`types.TrainingRuntime`): Reference to one of existing TrainingRuntimes.
             initializer (`Optional[types.Initializer]`):
                 Configuration for the dataset and model initializers.
             trainer (`Optional[types.CustomTrainer]`):
@@ -317,7 +317,7 @@ class TrainerClient:
         return train_job_name
 
     def list_jobs(
-        self, runtime: Optional[types.Runtime] = None
+        self, runtime: Optional[types.TrainingRuntime] = None
     ) -> List[types.TrainJob]:
         """List of all TrainJobs.
 
@@ -551,7 +551,7 @@ class TrainerClient:
     def __get_runtime_from_crd(
         self,
         runtime_crd: models.TrainerV1alpha1ClusterTrainingRuntime,
-    ) -> types.Runtime:
+    ) -> types.TrainingRuntime:
 
         if not (
             runtime_crd.metadata
@@ -563,7 +563,7 @@ class TrainerClient:
         ):
             raise Exception(f"ClusterTrainingRuntime CRD is invalid: {runtime_crd}")
 
-        return types.Runtime(
+        return types.TrainingRuntime(
             name=runtime_crd.metadata.name,
             trainer=utils.get_runtime_trainer(
                 runtime_crd.spec.template.spec.replicated_jobs,

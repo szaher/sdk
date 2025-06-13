@@ -21,9 +21,9 @@ import threading
 from typing import Any, Callable, Dict, List, Optional, Tuple
 from urllib.parse import urlparse
 
-from kubeflow_trainer_api import models
 from kubeflow.trainer.constants import constants
 from kubeflow.trainer.types import types
+from kubeflow_trainer_api import models
 from kubernetes import config
 
 
@@ -183,7 +183,7 @@ def get_trainjob_node_step(
     pod_name: str,
     pod_spec: models.IoK8sApiCoreV1PodSpec,
     pod_status: Optional[models.IoK8sApiCoreV1PodStatus],
-    trainjob_runtime: types.Runtime,
+    trainjob_runtime: types.TrainingRuntime,
     replicated_job_name: str,
     job_index: int,
 ) -> types.Step:
@@ -247,7 +247,7 @@ def get_resources_per_node(
 
 
 def get_entrypoint_using_train_func(
-    runtime: types.Runtime,
+    runtime: types.TrainingRuntime,
     train_func: Callable,
     train_func_parameters: Optional[Dict[str, Any]],
     pip_index_url: str,
@@ -386,7 +386,7 @@ def get_args_using_torchtune_config(
 
 def get_trainer_crd_from_custom_trainer(
     trainer: types.CustomTrainer,
-    runtime: types.Runtime,
+    runtime: types.TrainingRuntime,
 ) -> models.TrainerV1alpha1Trainer:
     """
     Get the Trainer CRD from the custom trainer.

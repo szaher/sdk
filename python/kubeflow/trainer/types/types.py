@@ -173,7 +173,7 @@ class Trainer:
 
 # Representation for the Training Runtime.
 @dataclass
-class Runtime:
+class TrainingRuntime:
     name: str
     trainer: Trainer
     pretrained_model: Optional[str] = None
@@ -195,7 +195,7 @@ class Step:
 class TrainJob:
     name: str
     creation_timestamp: datetime
-    runtime: Runtime
+    runtime: TrainingRuntime
     steps: List[Step]
     status: Optional[str] = constants.UNKNOWN
 
@@ -278,7 +278,7 @@ DEFAULT_TRAINER = Trainer(
 )
 
 # The default runtime configuration for the train() API
-DEFAULT_RUNTIME = Runtime(
+DEFAULT_RUNTIME = TrainingRuntime(
     name="torch-distributed",
     trainer=DEFAULT_TRAINER,
 )
