@@ -20,10 +20,16 @@ import string
 import uuid
 from typing import Dict, List, Optional
 
-from kubeflow_trainer_api import models
+from kubeflow.trainer.backends import (
+    DockerBackend,
+    PodmanBackend,
+    SubprocessBackend,
+    TrainingBackend,
+)
 from kubeflow.trainer.constants import constants
 from kubeflow.trainer.types import types
 from kubeflow.trainer.utils import utils
+from kubeflow_trainer_api import models
 from kubernetes import client, config, watch
 
 logger = logging.getLogger(__name__)
@@ -36,6 +42,8 @@ class TrainerClient:
         context: Optional[str] = None,
         client_configuration: Optional[client.Configuration] = None,
         namespace: Optional[str] = None,
+        backend: Optional[str] = "kubernetes",
+        backend_config: Optional[Dict] = None,
     ):
         """TrainerClient constructor. Configure logging in your application
             as follows to see detailed information from the TrainerClient APIs:
@@ -57,24 +65,48 @@ class TrainerClient:
                 the Kubernetes cluster it takes namespace from the
                 `/var/run/secrets/kubernetes.io/serviceaccount/namespace` file. By default it
                 uses the `default` namespace.
+            backend: The training backend to use. Supported values are "kubernetes",
+                "docker", "podman" and "subprocess".
+            backend_config: Extra configuration passed to the backend constructor.
         """
+
+        self.backend_type = backend
+        self.backend = None
 
         if namespace is None:
             namespace = utils.get_default_target_namespace(context)
 
         # If client configuration is not set, use kube-config to access Kubernetes APIs.
-        if client_configuration is None:
-            # Load kube-config or in-cluster config.
-            if config_file or not utils.is_running_in_k8s():
-                config.load_kube_config(config_file=config_file, context=context)
-            else:
-                config.load_incluster_config()
+        if self.backend_type == "kubernetes":
+            if client_configuration is None:
+                # Load kube-config or in-cluster config.
+                if config_file or not utils.is_running_in_k8s():
+                    config.load_kube_config(config_file=config_file, context=context)
+                else:
+                    config.load_incluster_config()
 
-        k8s_client = client.ApiClient(client_configuration)
-        self.custom_api = client.CustomObjectsApi(k8s_client)
-        self.core_api = client.CoreV1Api(k8s_client)
+            k8s_client = client.ApiClient(client_configuration)
+            self.custom_api = client.CustomObjectsApi(k8s_client)
+            self.core_api = client.CoreV1Api(k8s_client)
 
-        self.namespace = namespace
+            self.namespace = namespace
+        else:
+            self.backend = self._init_backend(self.backend_type, backend_config or {})
+            self.namespace = namespace
+
+    def _init_backend(self, backend_type: str, config: Dict) -> TrainingBackend:
+        """Instantiate a backend from the given type and config."""
+        if backend_type == "docker":
+            if "image" not in config:
+                raise ValueError("Docker backend requires 'image' in backend_config")
+            return DockerBackend(config["image"], config.get("args"))
+        if backend_type == "podman":
+            if "image" not in config:
+                raise ValueError("Podman backend requires 'image' in backend_config")
+            return PodmanBackend(config["image"], config.get("args"))
+        if backend_type == "subprocess":
+            return SubprocessBackend(config.get("env"))
+        raise ValueError(f"Unsupported backend type: {backend_type}")
 
     def list_runtimes(self) -> List[types.Runtime]:
         """List of the available Runtimes.
@@ -87,6 +119,10 @@ class TrainerClient:
             TimeoutError: Timeout to list Runtimes.
             RuntimeError: Failed to list Runtimes.
         """
+        if self.backend_type != "kubernetes":
+            raise NotImplementedError(
+                "list_runtimes is only available for the kubernetes backend"
+            )
 
         result = []
         try:
@@ -122,6 +158,11 @@ class TrainerClient:
 
     def get_runtime(self, name: str) -> types.Runtime:
         """Get the the Runtime object"""
+
+        if self.backend_type != "kubernetes":
+            raise NotImplementedError(
+                "get_runtime is only available for the kubernetes backend"
+            )
 
         try:
             thread = self.custom_api.get_cluster_custom_object(
@@ -177,9 +218,33 @@ class TrainerClient:
             RuntimeError: Failed to create TrainJobs.
         """
 
-        # Generate unique name for the TrainJob.
-        # TODO (andreyvelich): Discuss this TrainJob name generation.
+        # Generate unique name for the TrainJob or local job.
         train_job_name = random.choice(string.ascii_lowercase) + uuid.uuid4().hex[:11]
+
+        if self.backend_type != "kubernetes":
+            if isinstance(trainer, types.CustomTrainer):
+                command, args = utils.get_entrypoint_using_train_func(
+                    runtime,
+                    trainer.func,
+                    trainer.func_args,
+                    trainer.pip_index_url,
+                    trainer.packages_to_install,
+                )
+            elif isinstance(trainer, types.BuiltinTrainer):
+                command, args = utils.get_args_using_torchtune_config(
+                    trainer.config,
+                    initializer,
+                )
+            else:
+                if runtime.trainer.entrypoint is None:
+                    raise ValueError("Runtime trainer must define an entrypoint")
+                command = runtime.trainer.entrypoint
+                args = []
+
+            if not self.backend:
+                raise RuntimeError("Backend is not configured")
+            self.backend.run(command, args)
+            return train_job_name
 
         # Build the Trainer.
         trainer_crd = models.TrainerV1alpha1Trainer()
@@ -265,6 +330,11 @@ class TrainerClient:
             RuntimeError: Failed to list TrainJobs.
         """
 
+        if self.backend_type != "kubernetes":
+            raise NotImplementedError(
+                "list_jobs is only available for the kubernetes backend"
+            )
+
         result = []
         try:
             thread = self.custom_api.list_namespaced_custom_object(
@@ -308,6 +378,11 @@ class TrainerClient:
     def get_job(self, name: str) -> types.TrainJob:
         """Get the TrainJob object"""
 
+        if self.backend_type != "kubernetes":
+            raise NotImplementedError(
+                "get_job is only available for the kubernetes backend"
+            )
+
         try:
             thread = self.custom_api.get_namespaced_custom_object(
                 constants.GROUP,
@@ -341,6 +416,11 @@ class TrainerClient:
         node_rank: int = 0,
     ) -> Dict[str, str]:
         """Get the logs from TrainJob"""
+
+        if self.backend_type != "kubernetes":
+            raise NotImplementedError(
+                "get_job_logs is only available for the kubernetes backend"
+            )
 
         # Get the TrainJob Pod name.
         pod_name = None
@@ -441,6 +521,11 @@ class TrainerClient:
             TimeoutError: Timeout to delete TrainJob.
             RuntimeError: Failed to delete TrainJob.
         """
+
+        if self.backend_type != "kubernetes":
+            raise NotImplementedError(
+                "delete_job is only available for the kubernetes backend"
+            )
 
         try:
             self.custom_api.delete_namespaced_custom_object(

@@ -40,3 +40,9 @@ from kubeflow.trainer.types.types import (
     TrainerType,
     TorchTuneConfig,
 )
+from kubeflow.trainer.backends import (
+    DockerBackend,
+    PodmanBackend,
+    SubprocessBackend,
+    TrainingBackend,
+)
