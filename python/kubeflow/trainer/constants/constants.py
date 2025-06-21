@@ -125,3 +125,17 @@ MPI_ENTRYPOINT = "mpirun"
 
 # The Instruct Datasets class in torchtune
 TORCHTUNE_INSTRUCT_DATASET = "torchtune.datasets.instruct_dataset"
+
+
+# local execution
+## local config dir
+DEFAULT_CFG_DIR = os.path.expanduser("~/.kubeflow/trainer")
+# dir for storing local runtimes
+DEFAULT_LOCAL_RUNTIME_DIR = f"{DEFAULT_CFG_DIR}/runtime"
+# dir to create local training virtualenvs
+DEFAULT_VENV_DIR = f"{DEFAULT_CFG_DIR}/venv"
+# list of directories to be created at runtime
+DEFAULT_CFG_SUB_DIRS = [
+    "envs",
+    "runtime"
+]
