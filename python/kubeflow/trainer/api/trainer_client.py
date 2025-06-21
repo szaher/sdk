@@ -23,6 +23,7 @@ from kubeflow.trainer.types import types
 from kubeflow.trainer.types.backends import BackendConfig
 from kubeflow.trainer.backends import TRAINER_BACKEND_REGISTRY
 
+
 logger = logging.getLogger(__name__)
 
 
