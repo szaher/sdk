@@ -27,7 +27,7 @@ from kubeflow.trainer.backends import TRAINER_BACKEND_REGISTRY
 logger = logging.getLogger(__name__)
 
 
-class TrainerClient(object):
+class TrainerClient:
 
     def __init__(self, backend_type: Optional[str] = "kubernetes", backend_config: Optional[BackendConfig] = None):
         """

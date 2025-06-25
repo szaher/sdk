@@ -30,5 +30,5 @@ class K8SBackendConfig(BackendConfig):
         arbitrary_types_allowed = True
 
 class LocalProcessBackendConfig(BackendConfig):
-    create_env: Optional[bool] = True
+    pass
 

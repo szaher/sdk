@@ -11,7 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import datetime
 import logging
 import tempfile
 import venv
@@ -49,12 +48,18 @@ class LocalProcessBackend(base.TrainingBackend):
 
         return local_runtimes.runtimes
 
-    def get_runtime(self, name: str) -> Optional[types.Runtime]:
-        """Get the the Runtime object"""
-        if name not in local_runtimes:
+    def get_runtime(self, name: str) -> Optional[local_types.LocalRuntime]:
+        """Get the the Runtime object
+            Returns:
+                LocalRuntime: Runtime object for the given name.
+            Raises:
+                ValueError: If no Runtime is found for the given name.
+        """
+        _runtime = [rt for rt in local_runtimes.runtimes if rt.name == name]
+        if not _runtime:
             raise ValueError(f"Runtime '{name}' not found.")
 
-        return local_runtimes[name]
+        return _runtime[0]
 
 
     def train(self, train_job_name:str,
@@ -62,7 +67,7 @@ class LocalProcessBackend(base.TrainingBackend):
               initializer: Optional[types.Initializer] = None,
               trainer: Optional[types.Trainer] = None) -> str:
         """
-                Create the TrainJob. You can configure these types of training task:
+                Create the LocalTrainJob. You can configure these types of training task:
 
                 - Custom Training Task: Training with a self-contained function that encapsulates
                     the entire model training process, e.g. `CustomTrainer`.
@@ -80,8 +85,6 @@ class LocalProcessBackend(base.TrainingBackend):
 
                 Raises:
                     ValueError: Input arguments are invalid.
-                    TimeoutError: Timeout to create TrainJobs.
-                    RuntimeError: Failed to create TrainJobs.
                 """
         # Build the env
         if not trainer:
@@ -121,32 +124,42 @@ class LocalProcessBackend(base.TrainingBackend):
         return train_job_name
 
     def __create_venv(self, env_dir: str) -> None:
+        """Create Virtual Environment for the Training Job.
+        """
+        # @szaher do we need to replace this with another LocalJob for Env preparation?
         venv.create(env_dir=env_dir, with_pip=True)
 
     def list_jobs(self, runtime: Optional[types.Runtime] = None) -> List[local_types.LocalTrainJob]:
         """List of all TrainJobs.
 
                 Returns:
-                    List[TrainerV1alpha1TrainJob]: List of created TrainJobs.
+                    List[LocalTrainJob]: List of created LocalTrainJobs.
                         If no TrainJob exist, an empty list is returned.
-
-                Raises:
-                    TimeoutError: Timeout to list TrainJobs.
-                    RuntimeError: Failed to list TrainJobs.
                 """
 
-        result = [local_types.LocalTrainJob(name=j.name, creation_timestamp=datetime.datetime.now(), runtime=runtime, steps=[], job=j) for j in self.__jobs]
+        result = [
+            local_types.LocalTrainJob(
+                name=j.name, creation_timestamp=j.creation_time,
+                runtime=runtime, steps=[], job=j,
+            )
+            for j in self.__jobs
+        ]
 
         return result
 
     def get_job(self, name: str) -> Optional[local_types.LocalTrainJob]:
-        """Get the TrainJob object"""
+        """Get the TrainJob object.
+            Returns:
+                LocalTrainJob: LocalTrainJob object.
+            Raises:
+                ValueError: if TrainJob does not exist.
+        """
         j = [j for j in self.__jobs if j.name == name]
         if not j:
             raise ValueError("No TrainJob with name '%s'" % name)
         return local_types.LocalTrainJob(
             name=j[0].name,
-            creation_timestamp=datetime.datetime.now(),
+            creation_timestamp=j[0].completion_time,
             runtime=None, steps=[], job=j[0]
         )
 
@@ -155,15 +168,19 @@ class LocalProcessBackend(base.TrainingBackend):
                      follow: Optional[bool] = False,
                      step: str = constants.NODE,
                      node_rank: int = 0) -> List[str]:
-        """Get the logs from TrainJob"""
+        """Get the logs from TrainJob
+            Args:
+                  name (`str`) : The name of the TrainJob.
+                  follow (`Optional[bool]`): Follow the log stream or not (default: False).
+                  step (`str`): Step number (default: 0) [NOT IMPLEMENTED].
+                  node_rank (`int`): Node rank (default: 0) [NOT IMPLEMENTED].
+            Returns:
+                List[str]: List of logs from TrainJob.
+            Raises:
+                ValueError: if TrainJob does not exist.
+        """
         j = self.get_job(name=name)
-        lines = []
-        for line in j.job.follow_logs():
-            print(line)
-            lines.append(line)
-        return lines
-
-
+        return j.job.logs(follow=follow)
 
     def delete_job(self, name: str) -> None:
         """Delete the TrainJob.
@@ -172,8 +189,7 @@ class LocalProcessBackend(base.TrainingBackend):
                     name: Name of the TrainJob.
 
                 Raises:
-                    TimeoutError: Timeout to delete TrainJob.
-                    RuntimeError: Failed to delete TrainJob.
+                    ValueError: if TrainJob does not exist.
                 """
 
         # delete job from registry or job list
@@ -181,6 +197,9 @@ class LocalProcessBackend(base.TrainingBackend):
         if not target:
 
             raise ValueError("No TrainJob with name '%s'" % name)
+        # request process cancellation
+        target[0].cancel()
+        # remove the job from the list of jobs
         self.__jobs.remove(target[0])
 
 

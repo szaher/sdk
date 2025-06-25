@@ -15,57 +15,85 @@
 import threading
 import subprocess
 import logging
+from datetime import datetime
+from typing import List
 
 logger = logging.getLogger(__name__)
 
 
 class LocalJob(threading.Thread):
     def __init__(self, name, command, dependencies=None):
+        """Create a LocalJob. Create a local subprocess with threading to allow users
+        to create background jobs.
+        :param name: The name of the job.
+        :type name: str
+        :param command: The command to run.
+        :type command: str
+        :param dependencies: The dependencies to run in the job.
+        :type dependencies: List[job.LocalJob]
+        """
         super().__init__()
         self.name = name
         self.command = command
         self.dependencies = dependencies or []
         self._stdout = ""
-        self._stderr = ""
         self._returncode = None
         self._success = False
         self._lock = threading.Lock()
+        self._process = None
         self._output_updated = threading.Event()
+        self._cancel_requested = threading.Event()
+        self._start_time = None
+        self._end_time = None
 
     def run(self):
         for dep in self.dependencies:
             dep.join()
             if not dep.success:
                 with self._lock:
-                    self._stderr = f"Dependency {dep.name} failed. Skipping."
+                    self._stdout = f"Dependency {dep.name} failed. Skipping."
                 return
 
         logger.debug(f"[{self.name}] Starting...")
         try:
-            process = subprocess.Popen(
+            self._start_time = datetime.now()
+            self._process = subprocess.Popen(
                 self.command,
                 shell=True,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
-                text=True
+                text=True,
+                # @szaher how do we need to handle signals passed to child processes?
+                # preexec_fn=None if hasattr(subprocess, "CREATE_NEW_PROCESS_GROUP") else lambda: signal.signal(signal.SIGINT, signal.SIG_IGN),
             )
 
-            # Read output line by line (for streaming)
-            for line in iter(process.stdout.readline, ''):
+            while True:
+                if self._cancel_requested.is_set():
+                    self._process.terminate()
+                    self._stdout += "[TrainingCancelled]\n"
+                    self._success = False
+                    return
+
+                # Read output line by line (for streaming)
+                output_line = self._process.stdout.readline()
                 with self._lock:
-                    self._stdout += line
-                self._output_updated.set()
+                    if output_line:
+                        self._stdout += output_line
+                        self._output_updated.set()
 
-            process.stdout.close()
-            process.wait()
+                if not output_line and self._process.poll() is not None:
+                    break
 
-            with self._lock:
-                self._returncode = process.returncode
-                self._success = (process.returncode == 0)
-            print(f"[{self.name}] Completed with code {self._returncode}.")
+            self._process.stdout.close()
+            self._returncode = self._process.wait()
+            self._end_time = datetime.now()
+            self._success = (self._process.returncode == 0)
+            msg = f"[{self.name}] Completed with code {self._returncode} in {self._end_time - self._start_time} seconds."
+            self._stdout += msg
+
         except Exception as e:
             with self._lock:
-                self._stderr += f"Exception: {e}\n"
+                self._stdout += f"Exception: {e}\n"
                 self._success = False
 
     @property
@@ -77,11 +105,28 @@ class LocalJob(threading.Thread):
     def success(self):
         return self._success
 
+    def cancel(self):
+        self._cancel_requested.set()
+
     @property
     def returncode(self):
         return self._returncode
 
-    def follow_logs(self):
+    def logs(self, follow=False) -> List[str]:
+        """Print log lines"""
+        if not follow:
+            return self._stdout.splitlines()
+        output_lines = ""
+        try:
+            for line in next(self.__follow_logs()):
+                print(line, end="")
+                output_lines += line
+        except StopIteration:
+            pass
+
+        return output_lines.splitlines()
+
+    def __follow_logs(self):
         """Generator that yields new output lines as they come in."""
         last_index = 0
         while self.is_alive() or last_index < len(self._stdout):
@@ -93,3 +138,11 @@ class LocalJob(threading.Thread):
                 self._output_updated.clear()
             if new_data:
                 yield new_data
+
+    @property
+    def creation_time(self):
+        return self._start_time
+
+    @property
+    def completion_time(self):
+        return self._end_time

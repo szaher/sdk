@@ -24,6 +24,7 @@ from kubeflow.trainer.types import local as local_types
 
 logger = logging.getLogger(__name__)
 
+
 # @szaher we don't need this one but could be useful for discussion
 def setup_kubeflow_local_config_dir():
     logger.debug("Setting up kubeflow local config dir %s", constants.DEFAULT_CFG_DIR)
