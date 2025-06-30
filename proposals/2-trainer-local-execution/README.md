@@ -23,7 +23,7 @@ Currently, Kubeflow’s Trainer SDK requires jobs to be executed on a Kubernetes
 
 The local execution mode will allow users to run training jobs in container runtime environment on their local machines, mimicking the larger Kubeflow setup but without requiring Kubernetes. 
 
-![Architecture Diagram](high-level-arch.png)
+![Architecture Diagram](high-level-arch.svg)
 
 ### User Stories (Optional)
 
@@ -34,7 +34,7 @@ As an ML engineer, I want to run my model locally using Podman/Docker containers
 As an ML engineer, I want to initialize datasets and models within Podman/Docker containers, so that I can streamline my local training environment.
 
 ### Notes/Constraints/Caveats
-- The local execution mode will work only with Podman, Docker and Subporcess.
+- The local execution mode will initially support Podman, Docker, Apple Container and Subprocess.
 - The subprocess implementation will be restricted to single node.
 - The local execution mode will support only pytorch runtime initially.
 
@@ -53,8 +53,9 @@ The local execution mode will be implemented using a new `LocalTrainerClient`, w
 - The **DockerJobClient** will manage Docker containers, networks, and volumes using runtime definitions specified by the user.
 - The **PodmanJobClient** will manage Podman containers, networks, and volumes using runtime definitions specified by the user.
 - Containers will be labeled with job IDs, making it possible to track job status and logs.
+- An abstract interface to maintain API consistency across different clients or backends.
 
-![Detailed Workflow](detailed-workflow.png)
+![Detailed Workflow](detailed-workflow.svg)
 
 ### Test Plan
 
