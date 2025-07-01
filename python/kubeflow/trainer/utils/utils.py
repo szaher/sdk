@@ -256,6 +256,10 @@ def get_entrypoint_using_train_func(
     """
     Get the Trainer command and args from the given training function and parameters.
     """
+    # Check if the runtime has a trainer.
+    if not runtime.trainer:
+        raise ValueError(f"Runtime must have a trainer: {runtime}")
+    
     # Check if training function is callable.
     if not callable(train_func):
         raise ValueError(
@@ -365,9 +369,10 @@ def get_args_using_torchtune_config(
             else initializer.dataset.storage_uri
         )
         storage_uri_parsed = urlparse(storage_uri)
-        relative_path = re.sub(r"^/[^/]+", "", storage_uri_parsed.path)
+        parts = storage_uri_parsed.path.strip("/").split("/")
+        relative_path = "/".join(parts[1:]) if len(parts) > 1 else "."
 
-        if "." in relative_path:
+        if relative_path != "." and "." in relative_path:
             args.append(
                 f"dataset.data_files={os.path.join(constants.DATASET_PATH, relative_path)}"
             )
@@ -493,7 +498,13 @@ def get_dataset_initializer(
             dataset.storage_uri
             if dataset.storage_uri.startswith("hf://")
             else "hf://" + dataset.storage_uri
-        )
+        ),
+        env=[
+            models.IoK8sApiCoreV1EnvVar(
+                name=constants.INITIALIZER_ENV_ACCESS_TOKEN,
+                value=dataset.access_token,
+            ),
+        ] if dataset.access_token else None
     )
 
     return dataset_initializer
@@ -514,7 +525,13 @@ def get_model_initializer(
             model.storage_uri
             if model.storage_uri.startswith("hf://")
             else "hf://" + model.storage_uri
-        )
+        ),
+        env=[
+            models.IoK8sApiCoreV1EnvVar(
+                name=constants.INITIALIZER_ENV_ACCESS_TOKEN,
+                value=model.access_token,
+            ),
+        ] if model.access_token else None
     )
 
     return model_initializer
@@ -559,12 +576,10 @@ def get_args_in_dataset_preprocess_config(
     if dataset_preprocess_config.source:
         if not isinstance(dataset_preprocess_config.source, types.DataFormat):
             raise ValueError(
-                f"Invalid data format: {dataset_preprocess_config.source}."
+                f"Invalid data format: {dataset_preprocess_config.source.value}."
             )
 
-        args.append(f"dataset.source={dataset_preprocess_config.source}")
-
-    # Override the data dir or data files if it is provided.
+        args.append(f"dataset.source={dataset_preprocess_config.source.value}")
 
     # Override the split field if it is provided.
     if dataset_preprocess_config.split:
