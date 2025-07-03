@@ -16,7 +16,7 @@ import logging
 import random
 import string
 import uuid
-from typing import Optional
+from typing import Optional, Union
 
 from kubeflow.trainer.constants import constants
 from kubeflow.trainer.types import types
@@ -32,9 +32,10 @@ class TrainerClient:
     def __init__(self, backend_type: Optional[str] = "kubernetes", backend_config: Optional[BackendConfig] = None):
         """
         Initialize a trainer client.
-        backend_type: name of the backend to be used. default is kubernetes.
-        backend_config: backend configuration. default is None.
-        returns: None
+
+        Args:
+            backend_type: name of the backend to be used. default is kubernetes.
+            backend_config: backend configuration. default is None.
         """
         backend = self.__init_backend(backend_type, backend_config)
         self.__backend = backend
@@ -52,18 +53,48 @@ class TrainerClient:
         return backend_cls(cfg=backendconfig)
 
     def list_runtimes(self):
+        """List of the available Runtimes.
+
+            Returns:
+                List[Runtime]: List of available training runtimes.
+                    If no runtimes exist, an empty list is returned.
+
+            Raises:
+                TimeoutError: Timeout to list Runtimes.
+                RuntimeError: Failed to list Runtimes.
+        """
         return self.__backend.list_runtimes()
 
     def get_runtime(self, name: str):
         return self.__backend.get_runtime(name=name)
 
     def list_jobs(self, runtime: Optional[types.Runtime] = None):
+        """List of all TrainJobs.
+
+            Returns:
+                List[TrainerV1alpha1TrainJob]: List of created TrainJobs.
+                    If no TrainJob exist, an empty list is returned.
+
+            Raises:
+                TimeoutError: Timeout to list TrainJobs.
+                RuntimeError: Failed to list TrainJobs.
+        """
         return self.__backend.list_jobs(runtime=runtime)
 
     def get_job(self, name: str):
+        """Get the TrainJob object"""
         return self.__backend.get_job(name=name)
 
     def delete_job(self, name: str):
+        """Delete the TrainJob.
+
+            Args:
+                name: Name of the TrainJob.
+
+            Raises:
+                TimeoutError: Timeout to delete TrainJob.
+                RuntimeError: Failed to delete TrainJob.
+        """
         return self.__backend.delete_job(name=name)
 
     def get_job_logs(self,
@@ -72,13 +103,33 @@ class TrainerClient:
                      step: str = constants.NODE,
                      node_rank: int = 0,
         ):
+        """Get the logs from TrainJob"""
         return self.__backend.get_job_logs(name=name, follow=follow, step=step, node_rank=node_rank)
 
     def train(self,
               runtime: types.Runtime = types.DEFAULT_RUNTIME,
               initializer: Optional[types.Initializer] = None,
-              trainer: Optional[types.CustomTrainer] = None,
+              trainer: Optional[Union[types.CustomTrainer, types.BuiltinTrainer]] = None,
         ):
+        """
+        Create the TrainJob. You can configure these types of training task:
+        - Custom Training Task: Training with a self-contained function that encapsulates
+            the entire model training process, e.g. `CustomTrainer`.
+        - Config-driven Task with Existing Trainer: Training with a trainer that already includes
+            the post-training logic, requiring only parameter adjustments, e.g. `BuiltinTrainer`.
+        Args:
+            runtime (`types.Runtime`): Reference to one of existing Runtimes.
+            initializer (`Optional[types.Initializer]`):
+                Configuration for the dataset and model initializers.
+            trainer (`Optional[types.CustomTrainer, types.BuiltinTrainer]`):
+                Configuration for Custom Training Task or Config-driven Task with Builtin Trainer.
+        Returns:
+            str: The unique name of the TrainJob that has been generated.
+        Raises:
+            ValueError: Input arguments are invalid.
+            TimeoutError: Timeout to create TrainJobs.
+            RuntimeError: Failed to create TrainJobs.
+        """
         # Generate unique name for the TrainJob.
         # TODO (andreyvelich): Discuss this TrainJob name generation.
         train_job_name = random.choice(string.ascii_lowercase) + uuid.uuid4().hex[:11]
