@@ -21,6 +21,7 @@ jobs:
 
       - name: Install dependencies
         run: |
+          cd python
           uv sync
           uv install
 
