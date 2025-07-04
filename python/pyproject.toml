@@ -1,7 +1,3 @@
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
-
 [project]
 name = "kubeflow"
 dynamic = ["version"]
@@ -17,7 +13,6 @@ classifiers = [
   "Intended Audience :: Education",
   "Intended Audience :: Science/Research",
   # TODO (andreyvelich): Check Python version for Kubeflow Trainer.
-  "Programming Language :: Python :: 3.8",
   "Programming Language :: Python :: 3.9",
   "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
@@ -45,6 +40,28 @@ packages = ["kubeflow"]
 
 [tool.hatch.version]
 path = "kubeflow/trainer/__init__.py"
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "W"]
+ignore = ["E203"]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.12.2",
+]
+
+[tool.uv]
+package = true
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets]
+packages = ["kubeflow"]
 
 [tool.hatch.metadata]
 allow-direct-references = true

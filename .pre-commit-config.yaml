@@ -16,10 +16,11 @@ repos:
     rev: 25.1.0
     hooks:
       - id: black
-  - repo: https://github.com/pycqa/flake8
-    rev: 7.2.0
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.4.4
     hooks:
-      - id: flake8
+      - id: ruff
+        args: [--select=E,F,W]
 exclude: |
   (?x)^(
     python/kubeflow/trainer/__init__.py|

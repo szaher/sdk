@@ -15,7 +15,6 @@
 import inspect
 import os
 import queue
-import re
 import textwrap
 import threading
 from typing import Any, Callable, Dict, List, Optional, Tuple
@@ -259,7 +258,7 @@ def get_entrypoint_using_train_func(
     # Check if the runtime has a trainer.
     if not runtime.trainer:
         raise ValueError(f"Runtime must have a trainer: {runtime}")
-    
+
     # Check if training function is callable.
     if not callable(train_func):
         raise ValueError(
