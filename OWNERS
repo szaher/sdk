@@ -1,6 +1,7 @@
 approvers:
   - andreyvelich
   - Electronic-Waste
-  - tenzen-y
 reviewers:
   - astefanutti
+emeritus_approvers:
+  - tenzen-y
