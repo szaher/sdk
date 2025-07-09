@@ -80,7 +80,7 @@ class TrainerClient:
         """List of all TrainJobs.
 
             Returns:
-                List[TrainerV1alpha1TrainJob]: List of created TrainJobs.
+                List[TrainJob]: List of created TrainJobs.
                     If no TrainJob exist, an empty list is returned.
 
             Raises:
