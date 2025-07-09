@@ -16,13 +16,15 @@ import threading
 import subprocess
 import logging
 from datetime import datetime
-from typing import List
+from typing import List, Union
+
+from kubeflow.trainer.local import resource_manager
 
 logger = logging.getLogger(__name__)
 
 
 class LocalJob(threading.Thread):
-    def __init__(self, name, command, dependencies=None):
+    def __init__(self, name, command: Union[List, str], mem_limit=None, cpu_time=None, cpu_limit=None, nice=0, dependencies=None):
         """Create a LocalJob. Create a local subprocess with threading to allow users
         to create background jobs.
         :param name: The name of the job.
@@ -45,6 +47,11 @@ class LocalJob(threading.Thread):
         self._cancel_requested = threading.Event()
         self._start_time = None
         self._end_time = None
+        # limit cpu and memory resources
+        self.__memory_limit = mem_limit
+        self.__cpu_time = cpu_time
+        self.__cpu_limit = cpu_limit
+        self.__nice = nice
 
     def run(self):
         for dep in self.dependencies:
@@ -64,7 +71,12 @@ class LocalJob(threading.Thread):
                 stderr=subprocess.STDOUT,
                 text=True,
                 # @szaher how do we need to handle signals passed to child processes?
-                # preexec_fn=None if hasattr(subprocess, "CREATE_NEW_PROCESS_GROUP") else lambda: signal.signal(signal.SIGINT, signal.SIG_IGN),
+                preexec_fn=lambda: resource_manager.setup_local_process(
+                    mem_limit=self.__memory_limit,
+                    cpu_time=self.__cpu_time,
+                    cpu_limit=self.__cpu_limit,
+                    nice=self.__nice,
+                )
             )
 
             while True:

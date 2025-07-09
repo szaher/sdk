@@ -109,10 +109,25 @@ class LocalProcessBackend(base.TrainingBackend):
             trainer.packages_to_install,
         )
 
+        memory_limit = None
+        cpu_limit = None
+        cpu_time = None
+        nice = 0
+
+        if hasattr(trainer, "resources_per_node"):
+            memory_limit = trainer.resources_per_node.get("memory")
+            cpu_limit = trainer.resources_per_node.get("cpu")
+            cpu_time = trainer.resources_per_node.get("cpu_time")
+            nice = trainer.resources_per_node.get("nice")
+
         # prepare local job
         j = job.LocalJob(
             name=train_job_name,
             command=args,
+            cpu_time=cpu_time,
+            cpu_limit=cpu_limit,
+            mem_limit=memory_limit,
+            nice=nice,
         )
 
         # register job in local list

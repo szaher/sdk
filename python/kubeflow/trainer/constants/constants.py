@@ -131,6 +131,8 @@ TORCHTUNE_INSTRUCT_DATASET = "torchtune.datasets.instruct_dataset"
 
 
 # local execution
+# environment variable to pass which training backend to use
+KF_TRAINING_BACKEND_NAME = "KF_TRAINING_BACKEND"
 ## local config dir
 DEFAULT_CFG_DIR = os.path.expanduser("~/.kubeflow/trainer")
 # dir for storing local runtimes

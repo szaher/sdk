@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import logging
+import os
 import random
 import string
 import uuid
@@ -37,20 +38,27 @@ class TrainerClient:
             backend_type: name of the backend to be used. default is kubernetes.
             backend_config: backend configuration. default is None.
         """
-        backend = self.__init_backend(backend_type, backend_config)
-        self.__backend = backend
+        # if KF_TRAINING_BACKEND environment variable is set, use it to initialize training backend
+        backend_type = os.environ.get(constants.KF_TRAINING_BACKEND_NAME, backend_type)
+        # initialize training backend
+        self.__backend = self.__init_backend(backend_type, backend_config)
 
-    def __init_backend(self, backendtype: str, backendconfig: BackendConfig):
-        backend = TRAINER_BACKEND_REGISTRY.get(backendtype.lower())
+    def __init_backend(self, backend_type: str, backend_config: BackendConfig):
+        backend = TRAINER_BACKEND_REGISTRY.get(backend_type.lower())
         if not backend:
-            raise ValueError("Unknown backend type '{}'".format(backendtype))
+            raise ValueError("Unknown backend type '{}'".format(backend_type))
         # load the backend class
         backend_cls = backend.get("backend_cls")
         # check if backend configuration is present
-        if not backendconfig:
-            backendconfig = backend.get("config_cls")()
+        if not backend_config:
+            backend_config = backend.get("config_cls")()
+        # check if provided backend config instance uses the correct config class
+        if not isinstance(backend_config, backend.get("config_cls")):
+            raise ValueError(f"Wrong Backend Configuration provided. "
+                             f"{backend_type} requires config instance "
+                             f"of type {backend.get('config_cls')}")
         # initialize the backend class with the user provided config
-        return backend_cls(cfg=backendconfig)
+        return backend_cls(cfg=backend_config)
 
     def list_runtimes(self):
         """List of the available Runtimes.
@@ -110,7 +118,7 @@ class TrainerClient:
               runtime: types.Runtime = types.DEFAULT_RUNTIME,
               initializer: Optional[types.Initializer] = None,
               trainer: Optional[Union[types.CustomTrainer, types.BuiltinTrainer]] = None,
-        ):
+        ) -> str:
         """
         Create the TrainJob. You can configure these types of training task:
         - Custom Training Task: Training with a self-contained function that encapsulates
@@ -134,4 +142,4 @@ class TrainerClient:
         # TODO (andreyvelich): Discuss this TrainJob name generation.
         train_job_name = random.choice(string.ascii_lowercase) + uuid.uuid4().hex[:11]
 
-        self.__backend.train(train_job_name=train_job_name, runtime=runtime, initializer=initializer, trainer=trainer)
+        return self.__backend.train(train_job_name=train_job_name, runtime=runtime, initializer=initializer, trainer=trainer)
