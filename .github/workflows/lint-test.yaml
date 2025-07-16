@@ -17,14 +17,10 @@ jobs:
           python-version: '3.9'
 
       - name: Install uv
-        run: pip install uv
+        run: make install-uv
 
-      - name: Install dependencies
-        run: |
-          cd python
-          uv sync
+      - name: Install ruff
+        run: make install-ruff
 
-      - name: Run ruff
-        run: |
-          cd python
-          uv run ruff check
+      - name: Verify
+        run: make verify
