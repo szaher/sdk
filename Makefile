@@ -60,6 +60,7 @@ verify: uv ruff  ## install all required tools
 
 .PHONY: test-python
 test-python: ## Run Python unit test.
-	uv install --dev
-	PYTHONPATH=$(PROJECT_DIR) pytest ./python/kubeflow
+	@cd $(PY_DIR) && \
+	uv sync --dev && \
+	PYTHONPATH=$(PROJECT_DIR) uvx pytest ./kubeflow
 
