@@ -16,6 +16,9 @@ jobs:
         with:
           python-version: '3.9'
 
+      - name: Install bash
+        run: sudo apt-get update && sudo apt-get install -y bash
+
       - name: Install uv
         run: make install-uv
 
