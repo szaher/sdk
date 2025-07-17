@@ -36,9 +36,6 @@ Homepage = "https://github.com/kubeflow/trainer"
 Documentation = "https://www.kubeflow.org/docs/components/trainer/"
 Source = "https://github.com/kubeflow/trainer"
 
-[tool.hatch.build.targets.wheel]
-packages = ["kubeflow"]
-
 [tool.hatch.version]
 path = "kubeflow/trainer/__init__.py"
 
