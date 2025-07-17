@@ -44,17 +44,18 @@ help: ## Display this help.
 
 
 UV := $(shell which uv)
-
-.PHONY: deps
-deps:
 ifeq ($(UV),)
 	curl -LsSf https://astral.sh/uv/install.sh | sh
 	$(info uv has been installed)
 endif
 
+.PHONY: ruff
+ruff: ## Install Ruff
+	@uvx ruff --help &> /dev/null || uv tool install ruff
+
 
 .PHONY: verify
-verify: deps  ## install all required tools
+verify: ruff  ## install all required tools
 	@cd $(PY_DIR) && uv lock --check
 	@cd $(PY_DIR) && uvx ruff check --show-fixes
 

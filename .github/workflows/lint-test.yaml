@@ -20,7 +20,7 @@ jobs:
         uses: astral-sh/setup-uv@v6
 
       - name: Install ruff
-        run: make install-ruff
+        run: make ruff
 
       - name: Verify
         run: make verify
