@@ -51,7 +51,7 @@ ruff: ## Install Ruff
 
 
 .PHONY: verify
-verify: ruff  ## install all required tools
+verify: uv ruff  ## install all required tools
 	@cd $(PY_DIR) && uv lock --check
 	@cd $(PY_DIR) && uvx ruff check --show-fixes
 
