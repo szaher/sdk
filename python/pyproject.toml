@@ -32,9 +32,9 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/kubeflow/trainer"
-Documentation = "https://www.kubeflow.org/docs/components/trainer/"
-Source = "https://github.com/kubeflow/trainer"
+Homepage = "https://github.com/kubeflow/sdk"
+Documentation = "https://www.kubeflow.org/docs/components"
+Source = "https://github.com/kubeflow/sdk"
 
 [tool.hatch.version]
 path = "kubeflow/trainer/__init__.py"
