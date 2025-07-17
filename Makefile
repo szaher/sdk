@@ -18,13 +18,9 @@
 SHELL = /usr/bin/env bash -o pipefail
 .SHELLFLAGS = -ec
 
-
 PROJECT_DIR := $(shell dirname $(abspath $(lastword $(MAKEFILE_LIST))))
 
 PY_DIR := $(PROJECT_DIR)/python
-
-REPO := github.com/kubeflow/sdk
-
 
 ##@ General
 
