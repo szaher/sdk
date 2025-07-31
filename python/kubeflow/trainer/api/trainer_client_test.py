@@ -102,6 +102,11 @@ def training_client(request):
             list_namespaced_pod=Mock(side_effect=list_namespaced_pod_response),
             read_namespaced_pod_log=Mock(side_effect=mock_read_namespaced_pod_log),
         ),
+    ), patch(
+        "kubernetes.watch.Watch",
+        return_value=Mock(
+            stream=Mock(side_effect=mock_watch),
+        ),
     ):
         yield TrainerClient()
 
@@ -216,13 +221,12 @@ def get_resource_requirements() -> models.IoK8sApiCoreV1ResourceRequirements:
     )
 
 
-def add_custom_trainer_to_job(
-    train_job: models.TrainerV1alpha1TrainJob,
-) -> models.TrainerV1alpha1TrainJob:
+def get_custom_trainer() -> models.TrainerV1alpha1Trainer:
     """
-    Add a custom trainer configuration to the train job.
+    Get the custom trainer for the TrainJob.
     """
-    trainer_crd = models.TrainerV1alpha1Trainer(
+
+    return models.TrainerV1alpha1Trainer(
         command=["bash", "-c"],
         args=[
             '\nif ! [ -x "$(command -v pip)" ]; then\n    python -m ensurepip '
@@ -234,33 +238,24 @@ def add_custom_trainer_to_job(
             "{'learning_rate': 0.001, 'batch_size': 32})\n\nEOM\nprintf \"%s\" "
             '"$SCRIPT" > "trainer_client_test.py"\ntorchrun "trainer_client_test.py"'
         ],
-        num_nodes=2,
+        numNodes=2,
     )
 
-    train_job.spec.trainer = trainer_crd
-    return train_job
 
-
-def add_built_in_trainer_to_job(
-    train_job: models.TrainerV1alpha1TrainJob,
-) -> models.TrainerV1alpha1TrainJob:
+def get_builtin_trainer() -> models.TrainerV1alpha1Trainer:
     """
-    Add a built-in trainer configuration to the train job.
+    Get the builtin trainer for the TrainJob.
     """
-    trainer_crd = models.TrainerV1alpha1Trainer(
+    return models.TrainerV1alpha1Trainer(
         args=["batch_size=2", "epochs=2", "loss=Loss.CEWithChunkedOutputLoss"],
         command=["tune", "run"],
         numNodes=2,
     )
-    train_job.spec.trainer = trainer_crd
-    return train_job
 
 
 def get_train_job(
     train_job_name: str = BASIC_TRAIN_JOB_NAME,
-    runtime_name: str = TORCH_DISTRIBUTED,
-    add_built_in_trainer: bool = False,
-    add_custom_trainer: bool = False,
+    train_job_trainer: Optional[models.TrainerV1alpha1Trainer] = None,
 ) -> models.TrainerV1alpha1TrainJob:
     """
     Create a mock TrainJob object with optional trainer configurations.
@@ -270,44 +265,42 @@ def get_train_job(
         kind=constants.TRAINJOB_KIND,
         metadata=models.IoK8sApimachineryPkgApisMetaV1ObjectMeta(name=train_job_name),
         spec=models.TrainerV1alpha1TrainJobSpec(
-            runtimeRef=models.TrainerV1alpha1RuntimeRef(name=runtime_name),
+            runtimeRef=models.TrainerV1alpha1RuntimeRef(name=TORCH_DISTRIBUTED),
+            trainer=train_job_trainer,
         ),
     )
-
-    if add_built_in_trainer:
-        train_job = add_built_in_trainer_to_job(train_job)
-    if add_custom_trainer:
-        train_job = add_custom_trainer_to_job(train_job)
 
     return train_job
 
 
 def get_cluster_custom_object_response(*args, **kwargs):
     """Return a mocked ClusterTrainingRuntime object."""
+    mock_thread = Mock()
     if args[3] == TIMEOUT:
         raise multiprocessing.TimeoutError()
     if args[3] == RUNTIME:
         raise RuntimeError()
     if args[2] == constants.CLUSTER_TRAINING_RUNTIME_PLURAL:
-        result = create_cluster_training_runtime()
+        mock_thread.get.return_value = normalize_model(
+            create_cluster_training_runtime(),
+            models.TrainerV1alpha1ClusterTrainingRuntime,
+        )
 
-    result = normalize_model(result, models.TrainerV1alpha1ClusterTrainingRuntime)
-    mock_thread = Mock()
-    mock_thread.get.return_value = result
     return mock_thread
 
 
 def get_namespaced_custom_object_response(*args, **kwargs):
     """Return a mocked TrainJob object."""
+    mock_thread = Mock()
     if args[2] == TIMEOUT or args[4] == TIMEOUT:
         raise multiprocessing.TimeoutError()
     if args[2] == RUNTIME or args[4] == RUNTIME:
         raise RuntimeError()
     if args[3] == TRAIN_JOBS:  # TODO: review this.
-        job = add_status(create_train_job(train_job_name=args[4]))
+        mock_thread.get.return_value = add_status(
+            create_train_job(train_job_name=args[4])
+        )
 
-    mock_thread = Mock()
-    mock_thread.get.return_value = job
     return mock_thread
 
 
@@ -336,37 +329,26 @@ def add_status(
 def list_namespaced_custom_object_response(*args, **kwargs):
     """Return a list of mocked TrainJob objects."""
     mock_thread = Mock()
-
     if args[2] == TIMEOUT:
         raise multiprocessing.TimeoutError()
     if args[2] == RUNTIME:
         raise RuntimeError()
-    if args[2] == BASIC_TRAIN_JOB_NAME:
-        return_value = {
-            "items": [create_train_job(train_job_name=BASIC_TRAIN_JOB_NAME)]
-        }
-    if args[3] == TRAIN_JOBS:
-        return_value = build_train_job_list()
-
-    mock_thread.get.return_value = return_value
-    return mock_thread
-
-
-def build_train_job_list() -> models.TrainerV1alpha1TrainJobList:
-    """Build a mock TrainJobList object with multiple TrainJob items."""
-    train_job_list = models.TrainerV1alpha1TrainJobList(
-        apiVersion=constants.API_VERSION,
-        kind=constants.TRAINJOB_PLURAL,
-        items=[
+    if args[3] == constants.TRAINJOB_PLURAL:
+        items = [
             add_status(create_train_job(train_job_name="basic-job-1")),
             add_status(create_train_job(train_job_name="basic-job-2")),
-        ],
-    )
-    return normalize_model(train_job_list, models.TrainerV1alpha1TrainJobList)
+        ]
+        mock_thread.get.return_value = normalize_model(
+            models.TrainerV1alpha1TrainJobList(items=items),
+            models.TrainerV1alpha1TrainJobList,
+        )
+
+    return mock_thread
 
 
 def list_cluster_custom_object(*args, **kwargs):
     """Return a generic mocked response for cluster object listing."""
+    mock_thread = Mock()
     if args[2] == TIMEOUT:
         raise multiprocessing.TimeoutError()
     if args[2] == RUNTIME:
@@ -376,14 +358,11 @@ def list_cluster_custom_object(*args, **kwargs):
             create_cluster_training_runtime(name="runtime-1"),
             create_cluster_training_runtime(name="runtime-2"),
         ]
+        mock_thread.get.return_value = normalize_model(
+            models.TrainerV1alpha1ClusterTrainingRuntimeList(items=items),
+            models.TrainerV1alpha1ClusterTrainingRuntimeList,
+        )
 
-    runtime_list_obj = models.TrainerV1alpha1ClusterTrainingRuntimeList(items=items)
-    runtimes = normalize_model(
-        runtime_list_obj, models.TrainerV1alpha1ClusterTrainingRuntimeList
-    )
-
-    mock_thread = Mock()
-    mock_thread.get.return_value = runtimes
     return mock_thread
 
 
@@ -392,6 +371,32 @@ def mock_read_namespaced_pod_log(*args, **kwargs):
     if kwargs.get("namespace") == FAIL_LOGS:
         raise Exception("Failed to read logs")
     return "test log content"
+
+
+def mock_watch(*args, **kwargs):
+    """Simulate watch event"""
+    if kwargs.get("timeout_seconds") == 1:
+        raise TimeoutError("Watch timeout")
+
+    events = [
+        {
+            "type": "MODIFIED",
+            "object": {
+                "metadata": {
+                    "name": f"{BASIC_TRAIN_JOB_NAME}-node-0",
+                    "labels": {
+                        constants.JOBSET_NAME_LABEL: BASIC_TRAIN_JOB_NAME,
+                        constants.JOBSET_RJOB_NAME_LABEL: constants.NODE,
+                        constants.JOB_INDEX_LABEL: "0",
+                    },
+                },
+                "spec": {"containers": [{"name": constants.NODE}]},
+                "status": {"phase": "Running"},
+            },
+        }
+    ]
+
+    return iter(events)
 
 
 def normalize_model(model_obj, model_class):
@@ -412,8 +417,8 @@ def create_train_job(
     runtime: str = PYTORCH,
     image: str = "pytorch/pytorch:latest",
     initializer: Optional[types.Initializer] = None,
-    command: list = None,
-    args: list = None,
+    command: Optional[list] = None,
+    args: Optional[list] = None,
 ) -> models.TrainerV1alpha1TrainJob:
     """Create a mock TrainJob object."""
     return models.TrainerV1alpha1TrainJob(
@@ -454,9 +459,7 @@ def create_cluster_training_runtime(
         spec=models.TrainerV1alpha1TrainingRuntimeSpec(
             mlPolicy=models.TrainerV1alpha1MLPolicy(
                 torch=models.TrainerV1alpha1TorchMLPolicySource(
-                    num_proc_per_node=models.IoK8sApimachineryPkgUtilIntstrIntOrString(
-                        2
-                    )
+                    numProcPerNode=models.IoK8sApimachineryPkgUtilIntstrIntOrString(2)
                 ),
                 numNodes=2,
             ),
@@ -466,7 +469,7 @@ def create_cluster_training_runtime(
                     namespace=namespace,
                 ),
                 spec=models.JobsetV1alpha2JobSetSpec(
-                    replicated_jobs=[get_replicated_job()]
+                    replicatedJobs=[get_replicated_job()]
                 ),
             ),
         ),
@@ -474,7 +477,7 @@ def create_cluster_training_runtime(
     return runtime
 
 
-def get_replicated_job() -> models.TrainerV1alpha1ClusterTrainingRuntime:
+def get_replicated_job() -> models.JobsetV1alpha2ReplicatedJob:
     return models.JobsetV1alpha2ReplicatedJob(
         name="node",
         replicas=1,
@@ -507,11 +510,12 @@ def create_runtime_type(
     return types.Runtime(
         name=name,
         pretrained_model=None,
-        trainer=types.Trainer(
+        trainer=types.RuntimeTrainer(
             trainer_type=types.TrainerType.CUSTOM_TRAINER,
             framework=types.Framework.TORCH,
             entrypoint=[constants.TORCH_ENTRYPOINT],
             accelerator_count=4,
+            num_nodes=2,
         ),
     )
 
@@ -533,11 +537,12 @@ def get_train_job_data_type(
         runtime=types.Runtime(
             name=TORCH_DISTRIBUTED,
             pretrained_model=None,
-            trainer=types.Trainer(
+            trainer=types.RuntimeTrainer(
                 trainer_type=types.TrainerType.CUSTOM_TRAINER,
                 framework=types.Framework.TORCH,
                 entrypoint=["torchrun"],
                 accelerator_count=4,
+                num_nodes=2,
             ),
         ),
         steps=[
@@ -563,7 +568,8 @@ def get_train_job_data_type(
                 device_count="1",
             ),
         ],
-        status="Succeeded",
+        num_nodes=2,
+        status="Complete",
     )
 
 
@@ -669,7 +675,7 @@ def test_list_runtimes(training_client, test_case):
             },
             expected_output=get_train_job(
                 train_job_name=TRAIN_JOB_WITH_BUILT_IN_TRAINER,
-                add_built_in_trainer=True,
+                train_job_trainer=get_builtin_trainer(),
             ),
         ),
         TestCase(
@@ -685,7 +691,8 @@ def test_list_runtimes(training_client, test_case):
                 )
             },
             expected_output=get_train_job(
-                train_job_name=TRAIN_JOB_WITH_CUSTOM_TRAINER, add_custom_trainer=True
+                train_job_name=TRAIN_JOB_WITH_CUSTOM_TRAINER,
+                train_job_trainer=get_custom_trainer(),
             ),
         ),
         TestCase(
@@ -811,9 +818,127 @@ def test_list_jobs(training_client, test_case):
         assert test_case.expected_status == SUCCESS
         assert isinstance(jobs, list)
         assert len(jobs) == 2
+        assert [asdict(j) for j in jobs] == [
+            asdict(r) for r in test_case.expected_output
+        ]
 
     except Exception as e:
         assert type(e) is test_case.expected_error
+    print("test execution complete")
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        TestCase(
+            name="valid flow with all defaults",
+            expected_status=SUCCESS,
+            config={"name": BASIC_TRAIN_JOB_NAME},
+            expected_output={
+                "node-0": "test log content",
+            },
+        ),
+        TestCase(
+            name="runtime error when getting logs",
+            expected_status=FAILED,
+            config={"name": RUNTIME},
+            expected_error=RuntimeError,
+        ),
+    ],
+)
+def test_get_job_logs(training_client, test_case):
+    """Test TrainerClient.get_job_logs with basic success path."""
+    print("Executing test:", test_case.name)
+    try:
+        logs = training_client.get_job_logs(test_case.config.get("name"))
+        assert test_case.expected_status == SUCCESS
+        assert logs == test_case.expected_output
+
+    except Exception as e:
+        assert type(e) is test_case.expected_error
+    print("test execution complete")
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        TestCase(
+            name="wait for complete status (default)",
+            expected_status=SUCCESS,
+            config={"name": BASIC_TRAIN_JOB_NAME},
+            expected_output=get_train_job_data_type(
+                train_job_name=BASIC_TRAIN_JOB_NAME
+            ),
+        ),
+        TestCase(
+            name="wait for multiple statuses",
+            expected_status=SUCCESS,
+            config={
+                "name": BASIC_TRAIN_JOB_NAME,
+                "status": {constants.TRAINJOB_RUNNING, constants.TRAINJOB_COMPLETE},
+            },
+            expected_output=get_train_job_data_type(
+                train_job_name=BASIC_TRAIN_JOB_NAME
+            ),
+        ),
+        TestCase(
+            name="invalid status set error",
+            expected_status=FAILED,
+            config={
+                "name": BASIC_TRAIN_JOB_NAME,
+                "status": {"InvalidStatus"},
+            },
+            expected_error=ValueError,
+        ),
+        TestCase(
+            name="job failed when not expected",
+            expected_status=FAILED,
+            config={
+                "name": "failed-job",
+                "status": {constants.TRAINJOB_RUNNING},
+            },
+            expected_error=RuntimeError,
+        ),
+        TestCase(
+            name="timeout error to wait for failed status",
+            expected_status=FAILED,
+            config={
+                "name": BASIC_TRAIN_JOB_NAME,
+                "status": {constants.TRAINJOB_FAILED},
+                "timeout": 1,
+            },
+            expected_error=TimeoutError,
+        ),
+    ],
+)
+def test_wait_for_job_status(training_client, test_case):
+    """Test TrainerClient.wait_for_job_status with various scenarios."""
+    print("Executing test:", test_case.name)
+
+    original_get_job = training_client.get_job
+
+    # TrainJob has unexpected failed status.
+    def mock_get_job(name):
+        job = original_get_job(name)
+        if test_case.config.get("name") == "failed-job":
+            job.status = constants.TRAINJOB_FAILED
+        return job
+
+    training_client.get_job = mock_get_job
+
+    try:
+        job = training_client.wait_for_job_status(**test_case.config)
+
+        assert test_case.expected_status == SUCCESS
+        assert isinstance(job, types.TrainJob)
+        # Job status should be in the expected set.
+        assert job.status in test_case.config.get(
+            "status", {constants.TRAINJOB_COMPLETE}
+        )
+
+    except Exception as e:
+        assert type(e) is test_case.expected_error
+
     print("test execution complete")
 
 
@@ -855,38 +980,6 @@ def test_delete_job(training_client, test_case):
             constants.TRAINJOB_PLURAL,
             name=test_case.config.get("name"),
         )
-
-    except Exception as e:
-        assert type(e) is test_case.expected_error
-    print("test execution complete")
-
-
-@pytest.mark.parametrize(
-    "test_case",
-    [
-        TestCase(
-            name="valid flow with all defaults",
-            expected_status=SUCCESS,
-            config={"name": BASIC_TRAIN_JOB_NAME},
-            expected_output={
-                "node-0": "test log content",
-            },
-        ),
-        TestCase(
-            name="runtime error when getting logs",
-            expected_status=FAILED,
-            config={"name": RUNTIME},
-            expected_error=RuntimeError,
-        ),
-    ],
-)
-def test_get_job_logs(training_client, test_case):
-    """Test TrainerClient.get_job_logs with basic success path."""
-    print("Executing test:", test_case.name)
-    try:
-        logs = training_client.get_job_logs(test_case.config.get("name"))
-        assert test_case.expected_status == SUCCESS
-        assert logs == test_case.expected_output
 
     except Exception as e:
         assert type(e) is test_case.expected_error

@@ -37,8 +37,17 @@ TRAINJOB_KIND = "TrainJob"
 # The plural for the TrainJob.
 TRAINJOB_PLURAL = "trainjobs"
 
-# The default status for the TrainJob.
+# The default status for the TrainJob once users create it.
 TRAINJOB_CREATED = "Created"
+
+# The running status of the TrainJob, defined when all training node (e.g. Pods) are running.
+TRAINJOB_RUNNING = "Running"
+
+# The complete status of the TrainJob, defined when TrainJob CR has complete condition.
+TRAINJOB_COMPLETE = "Complete"
+
+# The failed status of the TrainJob, defined when TrainJob CR has failed condition.
+TRAINJOB_FAILED = "Failed"
 
 # The label key to identify the relationship between TrainJob and Pod template in the runtime.
 # For example, what PodTemplate must be overridden by TrainJob's .spec.trainer APIs.
@@ -96,6 +105,17 @@ JOB_INDEX_LABEL = "batch.kubernetes.io/job-completion-index"
 # The Pod pending phase indicates that Pod has been accepted by the Kubernetes cluster,
 # but one or more of the containers has not been made ready to run.
 POD_PENDING = "Pending"
+
+# The label selector for Pods created by the TrainJob.
+# It checks the following rJob.name: dataset-initializer, model-initializer, launcher, node.
+POD_LABEL_SELECTOR = ("{}={{trainjob_name}},{} in ({}, {}, {}, {})").format(
+    JOBSET_NAME_LABEL,
+    JOBSET_RJOB_NAME_LABEL,
+    DATASET_INITIALIZER,
+    MODEL_INITIALIZER,
+    LAUNCHER,
+    NODE,
+)
 
 # The default PIP index URL to download Python packages.
 DEFAULT_PIP_INDEX_URL = os.getenv("DEFAULT_PIP_INDEX_URL", "https://pypi.org/simple")
