@@ -69,6 +69,7 @@ BASIC_TRAIN_JOB_NAME = "basic-job"
 TRAIN_JOBS = "trainjobs"
 TRAIN_JOB_WITH_BUILT_IN_TRAINER = "train-job-with-built-in-trainer"
 TRAIN_JOB_WITH_CUSTOM_TRAINER = "train-job-with-custom-trainer"
+TRAIN_JOB_WITH_CUSTOM_TRAINER_ENV = "train-job-with-custom-trainer-env"
 
 
 # --------------------------
@@ -221,7 +222,9 @@ def get_resource_requirements() -> models.IoK8sApiCoreV1ResourceRequirements:
     )
 
 
-def get_custom_trainer() -> models.TrainerV1alpha1Trainer:
+def get_custom_trainer(
+        env: Optional[list[models.IoK8sApiCoreV1EnvVar]] = None,
+) -> models.TrainerV1alpha1Trainer:
     """
     Get the custom trainer for the TrainJob.
     """
@@ -239,8 +242,8 @@ def get_custom_trainer() -> models.TrainerV1alpha1Trainer:
             '"$SCRIPT" > "trainer_client_test.py"\ntorchrun "trainer_client_test.py"'
         ],
         numNodes=2,
+        env=env,
     )
-
 
 def get_builtin_trainer() -> models.TrainerV1alpha1Trainer:
     """
@@ -693,6 +696,32 @@ def test_list_runtimes(training_client, test_case):
             expected_output=get_train_job(
                 train_job_name=TRAIN_JOB_WITH_CUSTOM_TRAINER,
                 train_job_trainer=get_custom_trainer(),
+            ),
+        ),
+        TestCase(
+            name="valid flow with custom trainer and env vars",
+            expected_status=SUCCESS,
+            config={
+                "trainer": types.CustomTrainer(
+                    func=lambda: print("Hello World"),
+                    func_args={"learning_rate": 0.001, "batch_size": 32},
+                    packages_to_install=["torch", "numpy"],
+                    pip_index_url=constants.DEFAULT_PIP_INDEX_URL,
+                    num_nodes=2,
+                    env={
+                        "TEST_ENV": "test_value",
+                        "ANOTHER_ENV": "another_value",
+                    },
+                )
+            },
+            expected_output=get_train_job(
+                train_job_name=TRAIN_JOB_WITH_CUSTOM_TRAINER_ENV,
+                train_job_trainer=get_custom_trainer(
+                    env = [
+                        models.IoK8sApiCoreV1EnvVar(name="TEST_ENV", value="test_value"),
+                        models.IoK8sApiCoreV1EnvVar(name="ANOTHER_ENV", value="another_value"),
+                    ],
+                ),
             ),
         ),
         TestCase(
