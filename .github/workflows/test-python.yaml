@@ -5,16 +5,27 @@ on:
   push:
     branches: [main]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.9', '3.11']
+
+    name: Test (Python ${{ matrix.python-version }})
+
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python
+      - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
         with:
-          python-version: '3.9'
+          python-version: ${{ matrix.python-version }}
 
       - name: Verify
         run: make verify
@@ -26,4 +37,4 @@ jobs:
       - name: Upload coverage to Coveralls
         uses: coverallsapp/github-action@v2
         with:
-          github-token: ${{ secrets.GITHUB_TOKEN }} # Pass the GITHUB_TOKEN
+          github-token: ${{ secrets.GITHUB_TOKEN }}
