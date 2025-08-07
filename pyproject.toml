@@ -5,9 +5,10 @@ requires-python = ">=3.9"
 authors = [
   { name = "The Kubeflow Authors", email = "kubeflow-discuss@googlegroups.com" },
 ]
-license = { file = "../LICENSE" }
+license = "Apache-2.0"
+license-files = ["LICENSE"]
 description = "Kubeflow Python SDK to manage ML workloads and to interact with Kubeflow APIs."
-readme = "../README.md"
+readme = "README.md"
 keywords = ["kubeflow", "trainer", "model training", "llm", "ai"]
 classifiers = [
   "Intended Audience :: Developers",
@@ -46,7 +47,7 @@ Documentation = "https://www.kubeflow.org/docs/components"
 Source = "https://github.com/kubeflow/sdk"
 
 [tool.hatch.version]
-path = "kubeflow/trainer/__init__.py"
+path = "kubeflow/__init__.py"
 
 [tool.ruff]
 line-length = 100
@@ -54,8 +55,6 @@ line-length = 100
 [tool.ruff.lint]
 select = ["E", "F", "W"]
 ignore = ["E203"]
-
-
 
 [tool.uv]
 package = true
