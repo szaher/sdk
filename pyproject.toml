@@ -1,23 +1,20 @@
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
-
 [project]
 name = "kubeflow"
 dynamic = ["version"]
+requires-python = ">=3.9"
 authors = [
   { name = "The Kubeflow Authors", email = "kubeflow-discuss@googlegroups.com" },
 ]
-license = { file = "../LICENSE" }
+license = "Apache-2.0"
+license-files = ["LICENSE"]
 description = "Kubeflow Python SDK to manage ML workloads and to interact with Kubeflow APIs."
-readme = "../README.md"
+readme = "README.md"
 keywords = ["kubeflow", "trainer", "model training", "llm", "ai"]
 classifiers = [
   "Intended Audience :: Developers",
   "Intended Audience :: Education",
   "Intended Audience :: Science/Research",
   # TODO (andreyvelich): Check Python version for Kubeflow Trainer.
-  "Programming Language :: Python :: 3.8",
   "Programming Language :: Python :: 3.9",
   "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
@@ -32,19 +29,42 @@ classifiers = [
 dependencies = [
   "kubernetes>=27.2.0",
   "pydantic>=2.10.0",
-  "kubeflow_trainer_api@git+https://github.com/kubeflow/trainer.git@master#subdirectory=api/python_api"
+  "kubeflow-trainer-api>=2.0.0",
+]
+[project.optional-dependencies]
+dev = [
+  "pytest>=7.0",
+  "pytest-mock>=3.10",
+  "coverage>=7.0",
+  "kubeflow_trainer_api@git+https://github.com/kubeflow/trainer.git@master#subdirectory=api/python_api",
+  "ruff>=0.12.2",
+  "pre-commit>=4.2.0",
 ]
 
 [project.urls]
-Homepage = "https://github.com/kubeflow/trainer"
-Documentation = "https://www.kubeflow.org/docs/components/trainer/"
-Source = "https://github.com/kubeflow/trainer"
-
-[tool.hatch.build.targets.wheel]
-packages = ["kubeflow"]
+Homepage = "https://github.com/kubeflow/sdk"
+Documentation = "https://www.kubeflow.org/docs/components"
+Source = "https://github.com/kubeflow/sdk"
 
 [tool.hatch.version]
-path = "kubeflow/trainer/__init__.py"
+path = "kubeflow/__init__.py"
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "W"]
+ignore = ["E203"]
+
+[tool.uv]
+package = true
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets]
+packages = ["kubeflow"]
 
 [tool.hatch.metadata]
 allow-direct-references = true

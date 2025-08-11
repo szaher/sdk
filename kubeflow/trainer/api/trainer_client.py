@@ -115,7 +115,7 @@ class TrainerClient:
         return self.__backend.get_job_logs(name=name, follow=follow, step=step, node_rank=node_rank)
 
     def train(self,
-              runtime: types.Runtime = types.DEFAULT_RUNTIME,
+              runtime: types.Runtime = None,
               initializer: Optional[types.Initializer] = None,
               trainer: Optional[Union[types.CustomTrainer, types.BuiltinTrainer]] = None,
         ) -> str:
@@ -142,4 +142,4 @@ class TrainerClient:
         # TODO (andreyvelich): Discuss this TrainJob name generation.
         train_job_name = random.choice(string.ascii_lowercase) + uuid.uuid4().hex[:11]
 
-        return self.__backend.train(train_job_name=train_job_name, runtime=runtime, initializer=initializer, trainer=trainer)
+        return self.__backend.train(runtime=runtime, initializer=initializer, trainer=trainer)

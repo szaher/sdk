@@ -31,10 +31,9 @@ class TrainingBackend(abc.ABC):
 
     @abc.abstractmethod
     def train(self,
-              train_job_name: str,
               runtime: types.Runtime,
               initializer: Optional[types.Initializer] = None,
-              trainer: Optional[types.Trainer] = None,
+              trainer: Optional[types.RuntimeTrainer] = None,
               ) -> str:
         raise NotImplementedError()
 

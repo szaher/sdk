@@ -12,8 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import logging
+import string
 import tempfile
+import uuid
 import venv
+import random
 from typing import List, Optional
 
 from kubeflow.trainer.constants import constants
@@ -62,10 +65,10 @@ class LocalProcessBackend(base.TrainingBackend):
         return _runtime[0]
 
 
-    def train(self, train_job_name:str,
+    def train(self,
               runtime: local_types.LocalRuntime,
               initializer: Optional[types.Initializer] = None,
-              trainer: Optional[types.Trainer] = None) -> str:
+              trainer: Optional[types.RuntimeTrainer] = None) -> str:
         """
                 Create the LocalTrainJob. You can configure these types of training task:
 
@@ -73,7 +76,6 @@ class LocalProcessBackend(base.TrainingBackend):
                     the entire model training process, e.g. `CustomTrainer`.
 
                 Args:
-                    train_job_name: The name of the training job.
                     runtime (`types.Runtime`): Reference to one of existing Runtimes.
                     initializer (`Optional[types.Initializer]`):
                         Configuration for the dataset and model initializers.
@@ -86,6 +88,7 @@ class LocalProcessBackend(base.TrainingBackend):
                 Raises:
                     ValueError: Input arguments are invalid.
                 """
+        train_job_name = random.choice(string.ascii_lowercase) + uuid.uuid4().hex[:11]
         # Build the env
         if not trainer:
             raise ValueError("Cannot create TrainJob without a Trainer")
@@ -155,7 +158,7 @@ class LocalProcessBackend(base.TrainingBackend):
         result = [
             local_types.LocalTrainJob(
                 name=j.name, creation_timestamp=j.creation_time,
-                runtime=runtime, steps=[], job=j,
+                runtime=runtime, steps=[], job=j, num_nodes=len(self.__jobs),
             )
             for j in self.__jobs
         ]
@@ -175,7 +178,7 @@ class LocalProcessBackend(base.TrainingBackend):
         return local_types.LocalTrainJob(
             name=j[0].name,
             creation_timestamp=j[0].completion_time,
-            runtime=None, steps=[], job=j[0]
+            runtime=None, steps=[], job=j[0], num_nodes=len(self.__jobs),
         )
 
     def get_job_logs(self,

@@ -24,13 +24,13 @@ source .venv/bin/activate
 
 Install dependencies in editable mode:
 ```sh
-cd python
 pip install -e .
 ```
 
-Install development tools:
+#### Development Build (Optional)
+To install development tools and the latest API modules directly from the master branch:
 ```sh
-pip install pytest black isort flake8 coverage pre-commit
+pip install -e ".[dev]"
 ```
 
 ## Development Workflow

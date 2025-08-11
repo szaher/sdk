@@ -1,4 +1,3 @@
-
 # Copyright 2025 The Kubeflow Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,19 +12,4 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from kubeflow.trainer.types import local as local_types, types
-
-
-runtimes = [
-    local_types.LocalRuntime(
-        name="torch-distributed",
-        trainer=types.Trainer(
-            trainer_type=types.TrainerType.CUSTOM_TRAINER,
-            framework=types.Framework.TORCH,
-            entrypoint=["torchrun"],
-        ),
-        pretrained_model="",
-        command=["torchrun"],
-        create_venv=True,
-    )
-]
+__version__ = "0.1.0"
