@@ -17,7 +17,7 @@ import tempfile
 import uuid
 import venv
 import random
-from typing import List, Optional
+from typing import List, Optional, Set
 
 from kubeflow.trainer.constants import constants
 from kubeflow.trainer.types import types, local as local_types
@@ -220,6 +220,28 @@ class LocalProcessBackend(base.TrainingBackend):
         # remove the job from the list of jobs
         self.__jobs.remove(target[0])
 
+    def wait_for_job_status(
+        self,
+        name: str,
+        status: Set[str] = {constants.TRAINJOB_COMPLETE},
+        timeout: int = 600,
+        polling_interval: int = 2,
+    ) -> types.TrainJob:
+        """Wait for TrainJob to reach the completed status
+
+        Args:
+            name: Name of the TrainJob.
+            status: Set of expected statuses. It must be subset of Created, Running, Complete, and
+                Failed statuses.
+            timeout: How many seconds to wait until TrainJob reaches one of the expected conditions.
+            polling_interval: The polling interval in seconds to check TrainJob status.
+
+        Returns:
+            TrainJob: The training job that reaches the desired status.
+        """
+        local_job = self.get_job(name=name)
+        local_job.job.join(timeout=timeout)
+        return local_job
 
 
 

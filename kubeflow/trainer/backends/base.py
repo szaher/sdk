@@ -14,7 +14,7 @@
 
 import abc
 
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Set
 from kubeflow.trainer.constants import constants
 from kubeflow.trainer.types import types
 
@@ -58,4 +58,31 @@ class TrainingBackend(abc.ABC):
 
     @abc.abstractmethod
     def delete_job(self, name: str) -> None:
+        raise NotImplementedError()
+
+    @abc.abstractmethod
+    def wait_for_job_status(
+        self,
+        name: str,
+        status: Set[str] = {constants.TRAINJOB_COMPLETE},
+        timeout: int = 600,
+        polling_interval: int = 2,
+    ) -> types.TrainJob:
+        """Wait for TrainJob to reach the desired status
+
+        Args:
+            name: Name of the TrainJob.
+            status: Set of expected statuses. It must be subset of Created, Running, Complete, and
+                Failed statuses.
+            timeout: How many seconds to wait until TrainJob reaches one of the expected conditions.
+            polling_interval: The polling interval in seconds to check TrainJob status.
+
+        Returns:
+            TrainJob: The training job that reaches the desired status.
+
+        Raises:
+            ValueError: The input values are incorrect.
+            RuntimeError: Failed to get TrainJob or TrainJob reaches unexpected Failed status.
+            TimeoutError: Timeout to wait for TrainJob status.
+        """
         raise NotImplementedError()
