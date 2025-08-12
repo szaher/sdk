@@ -28,9 +28,10 @@ from typing import Any, Dict, Optional, Type
 from unittest.mock import Mock, patch
 
 import pytest
-from kubeflow.trainer.backends.k8s import K8SBackend
+from kubeflow.trainer.backends import K8SBackend
 from kubeflow.trainer.constants import constants
 from kubeflow.trainer.types import types
+from kubeflow.trainer.types.backends import K8SBackendConfig
 from kubeflow.trainer.utils import utils
 from kubeflow_trainer_api import models
 
@@ -100,7 +101,7 @@ def trainer_client(request):
             read_namespaced_pod_log=Mock(side_effect=mock_read_namespaced_pod_log),
         ),
     ):
-        yield K8SBackend()
+        yield K8SBackend(K8SBackendConfig())
 
 
 # --------------------------
