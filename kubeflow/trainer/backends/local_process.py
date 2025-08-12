@@ -22,7 +22,7 @@ from typing import List, Optional
 from kubeflow.trainer.constants import constants
 from kubeflow.trainer.types import types, local as local_types
 from kubeflow.trainer.types.backends import LocalProcessBackendConfig
-from kubeflow.trainer.utils import utils, local as local_utils
+from kubeflow.trainer.utils import local as local_utils
 from kubeflow.trainer.backends import base
 from kubeflow.trainer.local import runtimes as local_runtimes
 from kubeflow.trainer.local import job

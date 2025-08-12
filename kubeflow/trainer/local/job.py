@@ -24,7 +24,10 @@ logger = logging.getLogger(__name__)
 
 
 class LocalJob(threading.Thread):
-    def __init__(self, name, command: Union[List, str], mem_limit=None, cpu_time=None, cpu_limit=None, nice=0, dependencies=None):
+    def __init__(
+            self, name, command: Union[List, str], mem_limit=None,
+            cpu_time=None, cpu_limit=None, nice=0, dependencies=None
+    ):
         """Create a LocalJob. Create a local subprocess with threading to allow users
         to create background jobs.
         :param name: The name of the job.
@@ -100,7 +103,8 @@ class LocalJob(threading.Thread):
             self._returncode = self._process.wait()
             self._end_time = datetime.now()
             self._success = (self._process.returncode == 0)
-            msg = f"[{self.name}] Completed with code {self._returncode} in {self._end_time - self._start_time} seconds."
+            msg = (f"[{self.name}] Completed with code {self._returncode}"
+                   f" in {self._end_time - self._start_time} seconds.")
             self._stdout += msg
 
         except Exception as e:

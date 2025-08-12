@@ -14,9 +14,6 @@
 
 import logging
 import os
-import random
-import string
-import uuid
 from typing import Optional, Union
 
 from kubeflow.trainer.constants import constants
@@ -30,7 +27,10 @@ logger = logging.getLogger(__name__)
 
 class TrainerClient:
 
-    def __init__(self, backend_type: Optional[str] = "kubernetes", backend_config: Optional[BackendConfig] = None):
+    def __init__(
+            self, backend_type: Optional[str] = "kubernetes",
+            backend_config: Optional[BackendConfig] = None
+    ):
         """
         Initialize a trainer client.
 
@@ -138,8 +138,4 @@ class TrainerClient:
             TimeoutError: Timeout to create TrainJobs.
             RuntimeError: Failed to create TrainJobs.
         """
-        # Generate unique name for the TrainJob.
-        # TODO (andreyvelich): Discuss this TrainJob name generation.
-        train_job_name = random.choice(string.ascii_lowercase) + uuid.uuid4().hex[:11]
-
         return self.__backend.train(runtime=runtime, initializer=initializer, trainer=trainer)

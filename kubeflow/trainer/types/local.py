@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import os
-from typing import List, Optional, Union
+from typing import List, Optional
 from dataclasses import dataclass, field
 from pathlib import Path
 import sys
@@ -44,7 +44,8 @@ class LocalRuntime(types.Runtime):
 
         # @szaher need to make sure venv is created before this check
         # if not command_exe.exists():
-        #     raise FileNotFoundError(f"Python executable not found in virtualenv at: {command_exe}")
+        #     raise FileNotFoundError(
+        #     f"Python executable not found in virtualenv at: {command_exe}")
 
         return str(command_exe)
 

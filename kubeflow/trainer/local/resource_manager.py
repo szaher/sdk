@@ -152,11 +152,13 @@ def setup_local_process(mem_limit=None, cpu_limit=None, cpu_time=None, nice=0):
     # --- Build preexec_fn for POSIX ---
     preexec = None
     if mem_bytes is not None or cpu_cores is not None or nice:
-        preexec = lambda: _limit_resources_posix(
+        def preexec_fn():
+            return _limit_resources_posix(
             mem_limit=mem_bytes,
             cpu_time=cpu_time,
             cpu_cores=cpu_cores,
             nice=nice,
         )
+        preexec = preexec_fn
 
     return preexec

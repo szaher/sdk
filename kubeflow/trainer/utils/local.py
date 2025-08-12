@@ -129,7 +129,6 @@ def build_local_training_executable(
         func_code = f"{func_code}\n{train_func.__name__}({train_func_parameters})\n"
 
     command = runtime.get_executable_command()
-    python_entrypoint = runtime.python_path
 
     exec_script = textwrap.dedent(
         """
