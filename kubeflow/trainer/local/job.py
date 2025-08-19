@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 class LocalJob(threading.Thread):
     def __init__(
             self, name, command: Union[List, str], mem_limit=None,
-            cpu_time=None, cpu_limit=None, nice=0, dependencies=None
+            cpu_time=None, cpu_limit=None, nice=0
     ):
         """Create a LocalJob. Create a local subprocess with threading to allow users
         to create background jobs.
@@ -34,13 +34,10 @@ class LocalJob(threading.Thread):
         :type name: str
         :param command: The command to run.
         :type command: str
-        :param dependencies: The dependencies to run in the job.
-        :type dependencies: List[job.LocalJob]
         """
         super().__init__()
         self.name = name
         self.command = command
-        self.dependencies = dependencies or []
         self._stdout = ""
         self._returncode = None
         self._success = False
@@ -57,13 +54,6 @@ class LocalJob(threading.Thread):
         self.__nice = nice
 
     def run(self):
-        for dep in self.dependencies:
-            dep.join()
-            if not dep.success:
-                with self._lock:
-                    self._stdout = f"Dependency {dep.name} failed. Skipping."
-                return
-
         logger.debug(f"[{self.name}] Starting...")
         try:
             self._start_time = datetime.now()

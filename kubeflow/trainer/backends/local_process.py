@@ -17,10 +17,10 @@ import tempfile
 import uuid
 import venv
 import random
-from typing import List, Optional, Set
+from typing import List, Optional, Set, Dict
 
 from kubeflow.trainer.constants import constants
-from kubeflow.trainer.types import types, local as local_types
+from kubeflow.trainer.types import types
 from kubeflow.trainer.types.backends import LocalProcessBackendConfig
 from kubeflow.trainer.utils import local as local_utils
 from kubeflow.trainer.backends import base
@@ -41,23 +41,12 @@ class LocalProcessBackend(base.TrainingBackend):
         self.cfg = cfg
 
 
-    def list_runtimes(self) -> List[types.Runtime]:
-        """List of the available Runtimes.
-
-               Returns:
-                   List[Runtime]: List of available local training runtimes.
-                       If no runtimes exist, an empty list is returned.
-               """
+    def list_runtimes(self) -> List[types.LocalRuntime]:
 
         return local_runtimes.runtimes
 
-    def get_runtime(self, name: str) -> Optional[local_types.LocalRuntime]:
-        """Get the the Runtime object
-            Returns:
-                LocalRuntime: Runtime object for the given name.
-            Raises:
-                ValueError: If no Runtime is found for the given name.
-        """
+    def get_runtime(self, name: str) -> Optional[types.LocalRuntime]:
+
         _runtime = [rt for rt in local_runtimes.runtimes if rt.name == name]
         if not _runtime:
             raise ValueError(f"Runtime '{name}' not found.")
@@ -66,28 +55,10 @@ class LocalProcessBackend(base.TrainingBackend):
 
 
     def train(self,
-              runtime: local_types.LocalRuntime,
+              runtime: types.LocalRuntime,
               initializer: Optional[types.Initializer] = None,
               trainer: Optional[types.RuntimeTrainer] = None) -> str:
-        """
-                Create the LocalTrainJob. You can configure these types of training task:
 
-                - Custom Training Task: Training with a self-contained function that encapsulates
-                    the entire model training process, e.g. `CustomTrainer`.
-
-                Args:
-                    runtime (`types.Runtime`): Reference to one of existing Runtimes.
-                    initializer (`Optional[types.Initializer]`):
-                        Configuration for the dataset and model initializers.
-                    trainer (`Optional[types.CustomTrainer]`):
-                        Configuration for Custom Training Task.
-
-                Returns:
-                    str: The unique name of the TrainJob that has been generated.
-
-                Raises:
-                    ValueError: Input arguments are invalid.
-                """
         train_job_name = random.choice(string.ascii_lowercase) + uuid.uuid4().hex[:11]
         # Build the env
         if not trainer:
@@ -147,16 +118,10 @@ class LocalProcessBackend(base.TrainingBackend):
         # @szaher do we need to replace this with another LocalJob for Env preparation?
         venv.create(env_dir=env_dir, with_pip=True)
 
-    def list_jobs(self, runtime: Optional[types.Runtime] = None) -> List[local_types.LocalTrainJob]:
-        """List of all TrainJobs.
-
-                Returns:
-                    List[LocalTrainJob]: List of created LocalTrainJobs.
-                        If no TrainJob exist, an empty list is returned.
-                """
+    def list_jobs(self, runtime: Optional[types.Runtime] = None) -> List[types.LocalTrainJob]:
 
         result = [
-            local_types.LocalTrainJob(
+            types.LocalTrainJob(
                 name=j.name, creation_timestamp=j.creation_time,
                 runtime=runtime, steps=[], job=j, num_nodes=len(self.__jobs),
             )
@@ -165,17 +130,11 @@ class LocalProcessBackend(base.TrainingBackend):
 
         return result
 
-    def get_job(self, name: str) -> Optional[local_types.LocalTrainJob]:
-        """Get the TrainJob object.
-            Returns:
-                LocalTrainJob: LocalTrainJob object.
-            Raises:
-                ValueError: if TrainJob does not exist.
-        """
+    def get_job(self, name: str) -> Optional[types.LocalTrainJob]:
         j = [j for j in self.__jobs if j.name == name]
         if not j:
             raise ValueError("No TrainJob with name '%s'" % name)
-        return local_types.LocalTrainJob(
+        return types.LocalTrainJob(
             name=j[0].name,
             creation_timestamp=j[0].completion_time,
             runtime=None, steps=[], job=j[0], num_nodes=len(self.__jobs),
@@ -185,31 +144,13 @@ class LocalProcessBackend(base.TrainingBackend):
                      name: str,
                      follow: Optional[bool] = False,
                      step: str = constants.NODE,
-                     node_rank: int = 0) -> List[str]:
-        """Get the logs from TrainJob
-            Args:
-                  name (`str`) : The name of the TrainJob.
-                  follow (`Optional[bool]`): Follow the log stream or not (default: False).
-                  step (`str`): Step number (default: 0) [NOT IMPLEMENTED].
-                  node_rank (`int`): Node rank (default: 0) [NOT IMPLEMENTED].
-            Returns:
-                List[str]: List of logs from TrainJob.
-            Raises:
-                ValueError: if TrainJob does not exist.
-        """
+                     node_rank: int = 0) -> Dict[str, str]:
         j = self.get_job(name=name)
-        return j.job.logs(follow=follow)
+        return {
+            j.name: j.job.logs(follow=follow),
+        }
 
-    def delete_job(self, name: str) -> None:
-        """Delete the TrainJob.
-
-                Args:
-                    name: Name of the TrainJob.
-
-                Raises:
-                    ValueError: if TrainJob does not exist.
-                """
-
+    def delete_job(self, name: str):
         # delete job from registry or job list
         target = [j for j in self.__jobs if j.name == name]
         if not target:
@@ -226,19 +167,8 @@ class LocalProcessBackend(base.TrainingBackend):
         status: Set[str] = {constants.TRAINJOB_COMPLETE},
         timeout: int = 600,
         polling_interval: int = 2,
-    ) -> types.TrainJob:
-        """Wait for TrainJob to reach the completed status
+    ) -> types.LocalTrainJob:
 
-        Args:
-            name: Name of the TrainJob.
-            status: Set of expected statuses. It must be subset of Created, Running, Complete, and
-                Failed statuses.
-            timeout: How many seconds to wait until TrainJob reaches one of the expected conditions.
-            polling_interval: The polling interval in seconds to check TrainJob status.
-
-        Returns:
-            TrainJob: The training job that reaches the desired status.
-        """
         local_job = self.get_job(name=name)
         local_job.job.join(timeout=timeout)
         return local_job

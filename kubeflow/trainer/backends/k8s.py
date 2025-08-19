@@ -59,16 +59,6 @@ class K8SBackend(base.TrainingBackend):
         self.namespace = cfg.namespace
 
     def list_runtimes(self) -> List[types.Runtime]:
-        """List of the available Runtimes.
-
-        Returns:
-            List[Runtime]: List of available training runtimes.
-                If no runtimes exist, an empty list is returned.
-
-        Raises:
-            TimeoutError: Timeout to list Runtimes.
-            RuntimeError: Failed to list Runtimes.
-        """
 
         result = []
         try:
@@ -113,8 +103,6 @@ class K8SBackend(base.TrainingBackend):
         return result
 
     def get_runtime(self, name: str) -> types.Runtime:
-        """Get the the Runtime object"""
-
         try:
             thread = self.custom_api.get_cluster_custom_object(
                 constants.GROUP,
@@ -142,18 +130,6 @@ class K8SBackend(base.TrainingBackend):
         return self.__get_runtime_from_crd(runtime)  # type: ignore
 
     def get_runtime_packages(self, runtime: types.Runtime):
-        """
-        Print the installed Python packages for the given Runtime. If Runtime has GPUs it also
-        prints available GPUs on the single training node.
-
-        Args:
-            runtime: Reference to one of existing Runtimes.
-
-        Raises:
-            ValueError: Input arguments are invalid.
-            RuntimeError: Failed to get Runtime.
-
-        """
 
         if runtime.trainer.trainer_type == types.TrainerType.BUILTIN_TRAINER:
             raise ValueError("Cannot get Runtime packages for BuiltinTrainer")

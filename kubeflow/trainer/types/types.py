@@ -13,12 +13,16 @@
 # limitations under the License.
 
 
+import os
+from pathlib import Path
+import sys
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Callable, Dict, Optional
+from typing import Callable, Dict, Optional, List, Union, TypeAlias
 
 from kubeflow.trainer.constants import constants
+from kubeflow.trainer.local.job import LocalJob
 
 
 # Configuration for the Custom Trainer.
@@ -238,3 +242,46 @@ class Initializer:
 
     dataset: Optional[HuggingFaceDatasetInitializer] = None
     model: Optional[HuggingFaceModelInitializer] = None
+
+
+# local execution types
+
+@dataclass
+class LocalRuntime(Runtime):
+    create_venv: Optional[bool] = True
+    command: List[str] = field(default_factory=list)
+    python_path: Optional[str] = sys.executable
+    execution_dir: Optional[str] = None
+
+    def get_executable_command(self) -> str:
+        venv_path = Path(self.execution_dir)
+        command_str = " ".join(self.command).lstrip()
+        if self.create_venv:
+            if os.name == 'nt':
+                # Windows
+                command_exe = venv_path / "Scripts" / command_str
+            else:
+                # Unix / macOS
+                command_exe = venv_path / "bin" / command_str
+        else:
+            command_exe = command_str
+
+        # @szaher need to make sure venv is created before this check
+        # if not command_exe.exists():
+        #     raise FileNotFoundError(
+        #     f"Python executable not found in virtualenv at: {command_exe}")
+
+        return str(command_exe)
+
+
+@dataclass
+class LocalTrainJob(TrainJob):
+    job: LocalJob = None
+
+
+# Training Backends Types
+# this can be simplified if we drop python3.9 support as follows
+RuntimeList: TypeAlias = Union[List[Runtime], List[LocalRuntime]]
+TrainingRuntime: TypeAlias = Union[Runtime, LocalRuntime]
+TrainJobLike: TypeAlias = Union[TrainJob, LocalTrainJob]
+

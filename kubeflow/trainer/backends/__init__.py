@@ -16,13 +16,11 @@ from kubeflow.trainer.backends.k8s import K8SBackend
 from kubeflow.trainer.backends.local_process import LocalProcessBackend
 from kubeflow.trainer.types.backends import K8SBackendConfig, LocalProcessBackendConfig
 
+
 TRAINER_BACKEND_REGISTRY = {
-    "kubernetes": {
-        "backend_cls": K8SBackend,
-        "config_cls": K8SBackendConfig,
-    },
-    "local": {
-        "backend_cls": LocalProcessBackend,
-        "config_cls": LocalProcessBackendConfig,
-    }
+    cfg_class:backend_class for cfg_class, backend_class in
+    zip(
+        [K8SBackendConfig, LocalProcessBackendConfig],
+        [K8SBackend, LocalProcessBackend]
+    )
 }

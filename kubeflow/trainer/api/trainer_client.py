@@ -13,54 +13,44 @@
 # limitations under the License.
 
 import logging
-import os
-from typing import Optional, Union, Set
+from typing import Dict, Optional, Union, Set, List, TypeAlias
 
 from kubeflow.trainer.constants import constants
 from kubeflow.trainer.types import types
-from kubeflow.trainer.types.backends import BackendConfig
+from kubeflow.trainer.types.backends import K8SBackendConfig, LocalProcessBackendConfig
 from kubeflow.trainer.backends import TRAINER_BACKEND_REGISTRY
 
 
 logger = logging.getLogger(__name__)
 
+BackendCfg: TypeAlias = K8SBackendConfig | LocalProcessBackendConfig
+
 
 class TrainerClient:
 
-    def __init__(
-            self, backend_type: Optional[str] = "kubernetes",
-            backend_config: Optional[BackendConfig] = None
+    def __init__( self,
+            backend_config: Optional[BackendCfg] = K8SBackendConfig()
     ):
         """
         Initialize a trainer client.
 
         Args:
-            backend_type: name of the backend to be used. default is kubernetes.
-            backend_config: backend configuration. default is None.
+            backend_config: Backend configuration. Either K8SBackendConfig or
+                            LocalProcessBackendConfig, or None to use the backend's
+                            default config class. Defaults to K8SBackendConfig.
         """
-        # if KF_TRAINING_BACKEND environment variable is set, use it to initialize training backend
-        backend_type = os.environ.get(constants.KF_TRAINING_BACKEND_NAME, backend_type)
         # initialize training backend
-        self.__backend = self.__init_backend(backend_type, backend_config)
+        self.__backend = self.__init_backend(backend_config)
 
-    def __init_backend(self, backend_type: str, backend_config: BackendConfig):
-        backend = TRAINER_BACKEND_REGISTRY.get(backend_type.lower())
+    def __init_backend(self, backend_config: BackendCfg):
+        backend = TRAINER_BACKEND_REGISTRY.get(backend_config.__class__)
         if not backend:
-            raise ValueError("Unknown backend type '{}'".format(backend_type))
-        # load the backend class
-        backend_cls = backend.get("backend_cls")
-        # check if backend configuration is present
-        if not backend_config:
-            backend_config = backend.get("config_cls")()
-        # check if provided backend config instance uses the correct config class
-        if not isinstance(backend_config, backend.get("config_cls")):
-            raise ValueError(f"Wrong Backend Configuration provided. "
-                             f"{backend_type} requires config instance "
-                             f"of type {backend.get('config_cls')}")
-        # initialize the backend class with the user provided config
-        return backend_cls(cfg=backend_config)
+            raise ValueError("Invalid backend config '{}'".format(backend_config))
 
-    def list_runtimes(self):
+        # initialize the backend class with the user provided config
+        return backend(cfg=backend_config)
+
+    def list_runtimes(self) -> types.RuntimeList:
         """List of the available Runtimes.
 
             Returns:
@@ -73,10 +63,16 @@ class TrainerClient:
         """
         return self.__backend.list_runtimes()
 
-    def get_runtime(self, name: str):
+    def get_runtime(self, name: str) -> types.TrainingRuntime:
+        """Get the Runtime object
+        Args:
+            name: Name of the runtime.
+            Returns:
+                types.TrainingRuntime: Runtime object.
+            """
         return self.__backend.get_runtime(name=name)
 
-    def list_jobs(self, runtime: Optional[types.Runtime] = None):
+    def list_jobs(self, runtime: Optional[types.Runtime] = None) -> List[types.TrainJobLike]:
         """List of all TrainJobs.
 
             Returns:
@@ -89,7 +85,7 @@ class TrainerClient:
         """
         return self.__backend.list_jobs(runtime=runtime)
 
-    def get_job(self, name: str):
+    def get_job(self, name: str) -> types.TrainJob:
         """Get the TrainJob object"""
         return self.__backend.get_job(name=name)
 
@@ -110,7 +106,7 @@ class TrainerClient:
                      follow: Optional[bool] = False,
                      step: str = constants.NODE,
                      node_rank: int = 0,
-        ):
+        )-> Dict[str, str]:
         """Get the logs from TrainJob"""
         return self.__backend.get_job_logs(name=name, follow=follow, step=step, node_rank=node_rank)
 
@@ -146,7 +142,7 @@ class TrainerClient:
         status: Set[str] = {constants.TRAINJOB_COMPLETE},
         timeout: int = 600,
         polling_interval: int = 2,
-    ) -> types.TrainJob:
+    ) -> types.TrainJobLike:
         """Wait for TrainJob to reach the desired status
 
         Args:
@@ -168,3 +164,19 @@ class TrainerClient:
             name=name, status=status, timeout=timeout,
             polling_interval=polling_interval,
         )
+
+    def get_runtime_packages(self, runtime: types.TrainingRuntime):
+        """
+        Print the installed Python packages for the given Runtime. If Runtime has GPUs it also
+        prints available GPUs on the single training node.
+
+        Args:
+            runtime: Reference to one of existing Runtimes.
+
+        Raises:
+            ValueError: Input arguments are invalid.
+            RuntimeError: Failed to get Runtime.
+
+        """
+        return self.__backend.get_runtime_packages(runtime=runtime)
+

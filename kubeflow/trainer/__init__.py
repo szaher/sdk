@@ -18,6 +18,9 @@ from __future__ import absolute_import
 # Import the Kubeflow Trainer client.
 from kubeflow.trainer.api.trainer_client import TrainerClient  # noqa: F401
 
+# Import Kubeflow Trainer Backends
+from kubeflow.trainer.types.backends import K8SBackendConfig, LocalProcessBackendConfig
+
 # Import the Kubeflow Trainer constants.
 from kubeflow.trainer.constants.constants import DATASET_PATH, MODEL_PATH  # noqa: F401
 
@@ -55,4 +58,6 @@ __all__ = [
     "RuntimeTrainer",
     "TrainerClient",
     "TrainerType",
+    "K8SBackendConfig",
+    "LocalProcessBackendConfig"
 ]

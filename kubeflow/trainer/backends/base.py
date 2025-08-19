@@ -22,11 +22,11 @@ from kubeflow.trainer.types import types
 class TrainingBackend(abc.ABC):
 
     @abc.abstractmethod
-    def list_runtimes(self) -> List[types.Runtime]:
+    def list_runtimes(self) -> types.RuntimeList:
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def get_runtime(self, name: str) -> Optional[types.Runtime]:
+    def get_runtime(self, name: str) -> Optional[types.TrainingRuntime]:
         raise NotImplementedError()
 
     @abc.abstractmethod
@@ -40,11 +40,11 @@ class TrainingBackend(abc.ABC):
     @abc.abstractmethod
     def list_jobs(
             self, runtime: Optional[types.Runtime] = None
-    ) -> List[types.TrainJob]:
+    ) -> List[types.TrainJobLike]:
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def get_job(self, name: str) -> Optional[types.TrainJob]:
+    def get_job(self, name: str) -> Optional[types.TrainJobLike]:
         raise NotImplementedError()
 
     @abc.abstractmethod
@@ -62,27 +62,13 @@ class TrainingBackend(abc.ABC):
 
     @abc.abstractmethod
     def wait_for_job_status(
-        self,
-        name: str,
-        status: Set[str] = {constants.TRAINJOB_COMPLETE},
-        timeout: int = 600,
-        polling_interval: int = 2,
-    ) -> types.TrainJob:
-        """Wait for TrainJob to reach the desired status
+            self,
+            name: str,
+            status: Set[str] = {constants.TRAINJOB_COMPLETE},
+            timeout: int = 600,
+            polling_interval: int = 2,
+    ) -> types.TrainJobLike:
+        raise NotImplementedError()
 
-        Args:
-            name: Name of the TrainJob.
-            status: Set of expected statuses. It must be subset of Created, Running, Complete, and
-                Failed statuses.
-            timeout: How many seconds to wait until TrainJob reaches one of the expected conditions.
-            polling_interval: The polling interval in seconds to check TrainJob status.
-
-        Returns:
-            TrainJob: The training job that reaches the desired status.
-
-        Raises:
-            ValueError: The input values are incorrect.
-            RuntimeError: Failed to get TrainJob or TrainJob reaches unexpected Failed status.
-            TimeoutError: Timeout to wait for TrainJob status.
-        """
+    def get_runtime_packages(self, runtime: types.TrainingRuntime):
         raise NotImplementedError()
