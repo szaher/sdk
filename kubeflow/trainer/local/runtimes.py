@@ -13,11 +13,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from kubeflow.trainer.types import local as local_types, types
+from kubeflow.trainer.types import types
 
 
 runtimes = [
-    local_types.LocalRuntime(
+    types.LocalRuntime(
         name="torch-distributed",
         trainer=types.RuntimeTrainer(
             trainer_type=types.TrainerType.CUSTOM_TRAINER,

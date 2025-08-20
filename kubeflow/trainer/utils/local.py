@@ -20,7 +20,7 @@ from pathlib import Path
 import textwrap
 from typing import List, Callable, Optional, Dict, Any, Tuple
 from kubeflow.trainer.constants import constants
-from kubeflow.trainer.types import local as local_types
+from kubeflow.trainer.types import types
 
 logger = logging.getLogger(__name__)
 
@@ -93,7 +93,7 @@ def get_script_for_local_python_packages_install(
 
 
 def build_local_training_executable(
-    runtime: local_types.LocalRuntime,
+    runtime: types.LocalRuntime,
     train_func: Callable,
     train_func_parameters: Optional[Dict[str, Any]],
     pip_index_url: str,
