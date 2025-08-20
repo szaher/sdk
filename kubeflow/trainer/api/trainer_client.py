@@ -18,7 +18,7 @@ from typing import Dict, Optional, Union, Set, List
 from kubeflow.trainer.constants import constants
 from kubeflow.trainer.types import types
 from kubeflow.trainer.types.backends import K8SBackendConfig, LocalProcessBackendConfig
-from kubeflow.trainer.backends import TRAINER_BACKEND_REGISTRY
+from kubeflow.trainer.backends import TRAINER_BACKENDS
 
 
 logger = logging.getLogger(__name__)
@@ -43,7 +43,7 @@ class TrainerClient:
         self.__backend = self.__init_backend(backend_config)
 
     def __init_backend(self, backend_config: BackendCfg):
-        backend = TRAINER_BACKEND_REGISTRY.get(backend_config.__class__)
+        backend = TRAINER_BACKENDS.get(backend_config.__class__)
         if not backend:
             raise ValueError("Invalid backend config '{}'".format(backend_config))
 
