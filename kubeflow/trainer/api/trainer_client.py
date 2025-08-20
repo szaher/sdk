@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import logging
-from typing import Dict, Optional, Union, Set, List, TypeAlias
+from typing import Dict, Optional, Union, Set, List
 
 from kubeflow.trainer.constants import constants
 from kubeflow.trainer.types import types
@@ -23,7 +23,7 @@ from kubeflow.trainer.backends import TRAINER_BACKEND_REGISTRY
 
 logger = logging.getLogger(__name__)
 
-BackendCfg: TypeAlias = K8SBackendConfig | LocalProcessBackendConfig
+BackendCfg = Union[K8SBackendConfig, LocalProcessBackendConfig]
 
 
 class TrainerClient:
