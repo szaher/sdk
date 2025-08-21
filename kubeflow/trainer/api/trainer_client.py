@@ -31,8 +31,7 @@ class TrainerClient:
     def __init__( self,
             backend_config: Optional[BackendCfg] = K8SBackendConfig()
     ):
-        """
-        Initialize a trainer client.
+        """Initialize a Kubeflow Trainer client.
 
         Args:
             backend_config: Backend configuration. Either K8SBackendConfig or
