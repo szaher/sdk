@@ -17,7 +17,7 @@ from typing import Dict, Optional, Union, Set, List
 
 from kubeflow.trainer.constants import constants
 from kubeflow.trainer.types import types
-from kubeflow.trainer.types.backends import K8SBackendConfig, LocalProcessBackendConfig
+from kubeflow.trainer.types.backends import KubernetesBackendConfig, LocalProcessBackendConfig
 from kubeflow.trainer.backends import TRAINER_BACKENDS
 
 
