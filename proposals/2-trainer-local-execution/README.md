@@ -2,15 +2,21 @@
 
 ## Summary
 
-This KEP proposes the introduction of a local execution mode for the Kubeflow Trainer SDK, allowing machine learning (ML) engineers to test and experiment with their models locally before submitting them to a kubernetes based infrastructure. The feature will enable ML engineers to use Subprocess, Docker or other container runtimes to create isolated environments for training jobs, reducing the cost and time spent running experiments on expensive cloud resources. This local execution mode will allow for rapid prototyping, debugging, and validation of training jobs.
+This KEP proposes the introduction of a local execution mode for the Kubeflow Trainer SDK, allowing machine learning (ML) engineers to test and experiment with their models locally before submitting them to a kubernetes based infrastructure.
+The feature will enable ML engineers to use Subprocess, Podman, Docker or other container runtimes to create isolated environments for training jobs, reducing the cost and time spent running experiments on expensive cloud resources.
+This local execution mode will allow for rapid prototyping, debugging, and validation of training jobs.
 
 ## Motivation
 
-Currently, Kubeflow’s Trainer SDK requires jobs to be executed on a Kubernetes cluster. This setup can incur significant costs and time delays, especially for model experiments that are in the early stages. ML engineers often want to experiment locally before scaling their models to a full cloud-based infrastructure. The proposed local execution mode will allow engineers to quickly test their models in isolated containers or virtualenvs via subprocess, facilitating a faster and more efficient workflow.
+Currently, Kubeflow’s Trainer SDK requires jobs to be executed on a Kubernetes cluster.
+This setup can incur significant costs and time delays, especially for model experiments that are in the early stages.
+ML engineers often want to experiment locally before scaling their models to a full cloud-based infrastructure.
+The proposed local execution mode will allow engineers to quickly test their models in isolated containers or virtualenvs via subprocess, facilitating a faster and more efficient workflow.
 
 ### Goals
 - Allow users to run training jobs on their local machines using container runtimes or subprocess.
-- Implement a Local Trainer Client that integrates seamlessly with the Kubeflow SDK, supporting both single-node and multi-node training processes.
+- Rework current Kubeflow Trainer SDK to implement Training Backends with Kubernetes Backend as default.
+- Implement Local Training Backends that integrates seamlessly with the Kubeflow SDK, supporting both single-node and multi-node training processes.
 - Provide an implementation that supports PyTorch, with the potential to extend to other ML frameworks or runtimes.
 - Ensure compatibility with existing Kubeflow Trainer SDK features and user interfaces.
 
@@ -34,7 +40,7 @@ As an ML engineer, I want to run my model locally using Podman/Docker containers
 As an ML engineer, I want to initialize datasets and models within Podman/Docker containers, so that I can streamline my local training environment.
 
 ### Notes/Constraints/Caveats
-- The local execution mode will initially support Podman, Docker, Apple Container and Subprocess.
+- The local execution mode will initially support Subprocess, Podman, Docker and Apple Container.
 - The subprocess implementation will be restricted to single node.
 - The local execution mode will support only pytorch runtime initially.
 
@@ -42,16 +48,16 @@ As an ML engineer, I want to initialize datasets and models within Podman/Docker
 - **Risk**: Compatibility issues with non-Docker container runtimes.
   - **Mitigation**: Initially restrict support to Podman/Docker and evaluate alternatives for future phases.
 - **Risk**: Potential conflicts between local and Kubernetes execution modes.
-  - **Mitigation**: Ensure that the local trainer client is implemented with the exact same interface as the current TrainerClient to enable users to switch between both seamlessly.
+  - **Mitigation**: Ensure that the local training backends are implemented with the exact same interface as the kubernetes backend to enable users to switch between both seamlessly.
 
 ## Design Details
 
-The local execution mode will be implemented using a new `LocalTrainerClient`, which will allow users to execute training jobs using containers. The client will utilize container runtime capabilities to create isolated environments, including volumes and networks, to manage the training lifecycle. It will also allow for easy dataset and model initialization.
+The local execution mode will be implemented using a new `LocalProcessBackend`, `PodmanBackend`, `DockerBackend` which will allow users to execute training jobs using containers. The client will utilize container runtime capabilities to create isolated environments, including volumes and networks, to manage the training lifecycle. It will also allow for easy dataset and model initialization.
 
-- **LocalTrainerClient** will expose an interface similar to the existing `TrainerClient`.
+- Different training backends will need to implement the same interface from the `TrainingBackend` abstract class so `TrainerClient` can initialize and load the backend.
 - The Podman/Docker client will connect to a local container environment, create shared volumes, and initialize datasets and models as needed.
-- The **DockerJobClient** will manage Docker containers, networks, and volumes using runtime definitions specified by the user.
-- The **PodmanJobClient** will manage Podman containers, networks, and volumes using runtime definitions specified by the user.
+- The **DockerBackend** will manage Docker containers, networks, and volumes using runtime definitions specified by the user.
+- The **PodmanBackend** will manage Podman containers, networks, and volumes using runtime definitions specified by the user.
 - Containers will be labeled with job IDs, making it possible to track job status and logs.
 - An abstract interface to maintain API consistency across different clients or backends.
 
@@ -59,7 +65,7 @@ The local execution mode will be implemented using a new `LocalTrainerClient`, w
 
 ### Test Plan
 
-- **Unit Tests**: Ensure that the `LocalTrainerClient` and `JobClient` have complete unit test coverage, especially for container management, dataset initialization, and job tracking.
+- **Unit Tests**: Ensure that different training backends have complete unit test coverage, especially for container management, dataset initialization, and job tracking.
 - **E2E Tests**: Conduct end-to-end tests to validate the local execution mode, ensuring that jobs can be initialized, executed, and tracked correctly within Podman/Docker containers.
 
 ### Graduation Criteria
@@ -72,7 +78,7 @@ The local execution mode will be implemented using a new `LocalTrainerClient`, w
 ## Drawbacks
 
 - The initial implementation will be limited to single-worker training jobs, which may restrict users who need multi-node support.
-- The local execution mode will initially only support Podman/Docker and may require additional configurations for other container runtimes in the future.
+- The local execution mode will initially only support Subprocess and may require additional configurations for Podman/Docker container runtimes in the future.
 
 ## Alternatives
 - **Full Kubernetes Execution**: Enable users to always run jobs on Kubernetes clusters, though this comes with higher costs and longer development cycles for ML engineers.
