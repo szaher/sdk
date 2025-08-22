@@ -28,7 +28,7 @@ from kubeflow_trainer_api import models
 
 from kubeflow.trainer.constants import constants
 from kubeflow.trainer.types import types
-from kubeflow.trainer.types.backends import K8SBackendConfig
+from kubeflow.trainer.backends.kubernetes.types import KubernetesBackendConfig
 from kubeflow.trainer.utils import utils
 from kubeflow.trainer.backends import base
 
@@ -36,10 +36,10 @@ from kubeflow.trainer.backends import base
 logger = logging.getLogger(__name__)
 
 
-class K8SBackend(base.TrainingBackend):
+class KubernetesBackend(base.TrainingBackend):
 
     def __init__(self,
-                 cfg: K8SBackendConfig,
+                 cfg: KubernetesBackendConfig,
                  ):
         if cfg.namespace is None:
             cfg.namespace = utils.get_default_target_namespace(cfg.context)

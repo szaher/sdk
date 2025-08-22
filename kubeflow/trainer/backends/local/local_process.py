@@ -21,11 +21,11 @@ from typing import List, Optional, Set, Dict
 
 from kubeflow.trainer.constants import constants
 from kubeflow.trainer.types import types
-from kubeflow.trainer.types.backends import LocalProcessBackendConfig
-from kubeflow.trainer.utils import local as local_utils
+from kubeflow.trainer.backends.local.types import LocalProcessBackendConfig
+from kubeflow.trainer.backends.local import utils
 from kubeflow.trainer.backends import base
-from kubeflow.trainer.local import runtimes as local_runtimes
-from kubeflow.trainer.local import job
+from kubeflow.trainer.backends.local import runtimes as local_runtimes
+from kubeflow.trainer.backends.local import job
 
 
 logger = logging.getLogger(__name__)
@@ -73,9 +73,9 @@ class LocalProcessBackend(base.TrainingBackend):
         # create venv
         if runtime.create_venv:
             self.__create_venv(env_dir=target_dir)
-            runtime.python_path = local_utils.get_venv_python_path(target_dir)
+            runtime.python_path = utils.get_venv_python_path(target_dir)
 
-        command, args = local_utils.build_local_training_executable(
+        command, args = utils.build_local_training_executable(
             runtime,
             trainer.func,
             trainer.func_args,

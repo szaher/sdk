@@ -13,14 +13,13 @@
 # limitations under the License.
 
 from typing import Optional
-
-from pydantic import BaseModel
 from kubernetes import client
 
-class BackendConfig(BaseModel):
-    pass
+from kubeflow.trainer.types import types
 
-class K8SBackendConfig(BackendConfig):
+
+
+class KubernetesBackendConfig(types.BackendConfig):
     namespace: Optional[str] = None
     config_file: Optional[str] = None
     context: Optional[str] = None
@@ -28,7 +27,3 @@ class K8SBackendConfig(BackendConfig):
 
     class Config:
         arbitrary_types_allowed = True
-
-class LocalProcessBackendConfig(BackendConfig):
-    pass
-

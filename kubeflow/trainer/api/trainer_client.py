@@ -15,39 +15,40 @@
 import logging
 from typing import Dict, Optional, Union, Set, List
 
+from kubeflow.trainer.backends.kubernetes.k8s import KubernetesBackend
+from kubeflow.trainer.backends.local.local_process import LocalProcessBackend
 from kubeflow.trainer.constants import constants
 from kubeflow.trainer.types import types
-from kubeflow.trainer.types.backends import KubernetesBackendConfig, LocalProcessBackendConfig
-from kubeflow.trainer.backends import TRAINER_BACKENDS
+from kubeflow.trainer.backends.kubernetes.types import KubernetesBackendConfig
+from kubeflow.trainer.backends.local.types import LocalProcessBackendConfig
 
 
 logger = logging.getLogger(__name__)
 
-BackendCfg = Union[K8SBackendConfig, LocalProcessBackendConfig]
+BackendCfg = Union[KubernetesBackendConfig, LocalProcessBackendConfig]
 
 
 class TrainerClient:
 
     def __init__( self,
-            backend_config: Optional[BackendCfg] = K8SBackendConfig()
+            backend_config: Optional[BackendCfg] = KubernetesBackendConfig()
     ):
         """Initialize a Kubeflow Trainer client.
 
         Args:
-            backend_config: Backend configuration. Either K8SBackendConfig or
+            backend_config: Backend configuration. Either KubernetesBackendConfig or
                             LocalProcessBackendConfig, or None to use the backend's
-                            default config class. Defaults to K8SBackendConfig.
+                            default config class. Defaults to KubernetesBackendConfig.
         """
         # initialize training backend
-        self.__backend = self.__init_backend(backend_config)
-
-    def __init_backend(self, backend_config: BackendCfg):
-        backend = TRAINER_BACKENDS.get(backend_config.__class__)
-        if not backend:
+        self.__backend = None
+        if isinstance(backend_config, KubernetesBackendConfig):
+            self.__backend = KubernetesBackend(backend_config)
+        elif isinstance(backend_config, LocalProcessBackendConfig):
+            self.__backend = LocalProcessBackend(backend_config)
+        else:
             raise ValueError("Invalid backend config '{}'".format(backend_config))
 
-        # initialize the backend class with the user provided config
-        return backend(cfg=backend_config)
 
     def list_runtimes(self) -> types.RuntimeList:
         """List of the available Runtimes.

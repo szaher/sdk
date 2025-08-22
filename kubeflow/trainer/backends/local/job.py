@@ -18,7 +18,7 @@ import logging
 from datetime import datetime
 from typing import List, Union
 
-from kubeflow.trainer.local import resource_manager
+from kubeflow.trainer.backends.local import resource_manager
 
 logger = logging.getLogger(__name__)
 

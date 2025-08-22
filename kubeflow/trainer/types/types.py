@@ -20,9 +20,10 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from typing import Callable, Dict, Optional, List, Union
+from pydantic import BaseModel
 
 from kubeflow.trainer.constants import constants
-from kubeflow.trainer.local.job import LocalJob
+from kubeflow.trainer.backends.local.job import LocalJob
 
 
 # Configuration for the Custom Trainer.
@@ -280,8 +281,12 @@ class LocalTrainJob(TrainJob):
 
 
 # Training Backends Types
+class BackendConfig(BaseModel):
+    pass
+
 # this can be simplified if we drop python3.9 support as follows
 RuntimeList = Union[List[Runtime], List[LocalRuntime]]
 TrainingRuntime = Union[Runtime, LocalRuntime]
 TrainJobLike = Union[TrainJob, LocalTrainJob]
+
 
