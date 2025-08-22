@@ -43,6 +43,7 @@ As an ML engineer, I want to initialize datasets and models within Podman/Docker
 - The local execution mode will initially support Subprocess, Podman, Docker and Apple Container.
 - The subprocess implementation will be restricted to single node.
 - The local execution mode will support only pytorch runtime initially.
+- Resource limitations on memory, cpu and gpu is not fully supported locally and might not be supported if the training backend doesn't expose apis to support it.
 
 ### Risks and Mitigations
 - **Risk**: Compatibility issues with non-Docker container runtimes.
