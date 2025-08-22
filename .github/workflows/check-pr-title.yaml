@@ -28,7 +28,7 @@ jobs:
             fix
             feat
             revert
-            proposal
+            KEP
 
           scopes: |
             ci
