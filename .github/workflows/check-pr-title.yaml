@@ -28,11 +28,13 @@ jobs:
             fix
             feat
             revert
+            proposal
 
           scopes: |
             ci
             docs
             examples
+            proposals
             scripts
             test
             trainer
