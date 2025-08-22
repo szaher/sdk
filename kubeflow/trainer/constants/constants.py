@@ -116,14 +116,7 @@ POD_PENDING = "Pending"
 
 # The label selector for Pods created by the TrainJob.
 # It checks the following rJob.name: dataset-initializer, model-initializer, launcher, node.
-POD_LABEL_SELECTOR = ("{}={{trainjob_name}},{} in ({}, {}, {}, {})").format(
-    JOBSET_NAME_LABEL,
-    JOBSET_RJOB_NAME_LABEL,
-    DATASET_INITIALIZER,
-    MODEL_INITIALIZER,
-    LAUNCHER,
-    NODE,
-)
+POD_LABEL_SELECTOR = f"{JOBSET_NAME_LABEL}={{trainjob_name}},{JOBSET_RJOB_NAME_LABEL} in ({DATASET_INITIALIZER}, {MODEL_INITIALIZER}, {LAUNCHER}, {NODE})"
 
 # The default PIP index URL to download Python packages.
 DEFAULT_PIP_INDEX_URL = os.getenv("DEFAULT_PIP_INDEX_URL", "https://pypi.org/simple")

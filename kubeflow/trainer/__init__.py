@@ -13,8 +13,6 @@
 # limitations under the License.
 
 
-from __future__ import absolute_import
-
 # Import the Kubeflow Trainer client.
 from kubeflow.trainer.api.trainer_client import TrainerClient  # noqa: F401
 
@@ -32,9 +30,9 @@ from kubeflow.trainer.types.types import (
     Initializer,
     Loss,
     Runtime,
+    RuntimeTrainer,
     TorchTuneConfig,
     TorchTuneInstructDataset,
-    RuntimeTrainer,
     TrainerType,
 )
 

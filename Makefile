@@ -53,7 +53,9 @@ ruff: ## Install Ruff
 .PHONY: verify
 verify: uv uv-venv ruff  ## install all required tools
 	@uv lock --check
-	@uvx ruff check --show-fixes
+	@uv pip install -e ".[dev]"  ## make sure to install the correct dev tool versions
+	@uv run ruff check --show-fixes --output-format=github .
+	@uv run ruff format --check .
 
 .PHONY: uv-venv
 uv-venv:
