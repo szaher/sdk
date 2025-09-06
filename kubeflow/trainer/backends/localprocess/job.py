@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
+import os
 import threading
 import subprocess
 import logging
@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 class LocalJob(threading.Thread):
     def __init__(
-            self, name, command: Union[List, Tuple[str], str], debug: bool=False,
+            self, name, command: Union[List, Tuple[str], str],  execution_dir:str = None, debug: bool=False,
             env: Dict[str, str] = None, dependencies: List = None,
     ):
         """Create a LocalJob. Create a local subprocess with threading to allow users
@@ -34,6 +34,14 @@ class LocalJob(threading.Thread):
         :type name: str
         :param command: The command to run.
         :type command: str
+        :param execution_dir: The execution directory.
+        :type execution_dir: str
+        :param debug: If true, run in debug mode.
+        :type debug: bool
+        :param env: Environment variables.
+        :type env: Dict[str, str]
+        :param dependencies: List of dependencies.
+        :type dependencies: List[str]
         """
         super().__init__()
         self.name = name
@@ -51,6 +59,7 @@ class LocalJob(threading.Thread):
         self.env = env or {}
         self.dependencies = dependencies or []
         self.debug = debug
+        self.execution_dir = execution_dir or os.getcwd()
 
     def run(self):
         for dep in self.dependencies:
@@ -60,16 +69,22 @@ class LocalJob(threading.Thread):
                     self._stdout = f"Dependency {dep.name} failed. Skipping"
                 return
 
+        current_dir = os.getcwd()
         try:
             self._start_time = datetime.now()
             if self.debug:
                 _c = " ".join(self.command)
                 logger.debug(f"[{self.name}] Started at {self._start_time} with command: \n {_c}")
+
+            # change working directory to venv before executing script
+            os.chdir(self.execution_dir)
+
             self._process = subprocess.Popen(
                 self.command,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,
+                encoding="utf-8",
                 bufsize=1,
                 env=self.env,
             )
@@ -111,6 +126,8 @@ class LocalJob(threading.Thread):
                 self._stdout += f"Exception: {e}\n"
                 self._success = False
                 self._status = constants.TRAINJOB_FAILED
+        finally:
+            os.chdir(current_dir)
 
     @property
     def stdout(self):

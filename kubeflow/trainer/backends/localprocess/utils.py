@@ -49,10 +49,14 @@ def get_runtime_trainer(
     return trainer
 
 
-def get_dependencies_command(pip_bin: str, pip_index_url: str, packages: List[str]):
+def get_dependencies_command(python_bin, pip_bin: str, pip_index_urls: str, packages: List[str]):
+    options = [f"--index-url {pip_index_urls[0]}"]
+    options.extend(f"--extra-index-url {extra_index_url}" for extra_index_url in pip_index_urls[1:])
+
     mapping = {
+        "PYTHON_BIN": python_bin,
         "PIP_BIN": pip_bin,
-        "PIP_INDEX": pip_index_url,
+        "PIP_INDEX": " ".join(options),
         "PACKAGE_STR": " ".join(packages),
     }
     t = Template(local_exec_constants.DEPENDENCIES_SCRIPT)
@@ -62,8 +66,6 @@ def get_dependencies_command(pip_bin: str, pip_index_url: str, packages: List[st
         '-c',
         result
     )
-
-
 
 
 def get_local_devices(resources: dict[str, str]) -> (str, int):

@@ -25,6 +25,8 @@ from kubeflow.trainer.types import types
 class LocalProcessBackendConfig(BaseModel):
     cleanup: bool = True
     debug: bool = False
+    # change working directory to venv for execution.
+    run_in_venv_dir: bool = True
 
 
 

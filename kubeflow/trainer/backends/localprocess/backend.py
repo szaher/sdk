@@ -71,7 +71,10 @@ class LocalProcessBackend(ExecutionBackend):
 
         # setup runtime
         target_dir, python_bin, pip_bin = self.__setup_runtime(train_job_name=train_job_name)
-        print("Operating in ", target_dir)
+
+        if self.cfg.debug:
+            logger.info("operating in {}".format(target_dir))
+
         local_runtime = self.__get_full_runtime(runtime)
 
         runtime.trainer =  local_utils.get_runtime_trainer(
@@ -89,8 +92,9 @@ class LocalProcessBackend(ExecutionBackend):
                 raise ValueError(f"CustomTrainer can't be used with {runtime.name} runtime")
             if trainer.packages_to_install:
                 deps_command = local_utils.get_dependencies_command(
+                    python_bin=python_bin,
                     pip_bin=str(pip_bin),
-                    pip_index_url=trainer.pip_index_url if trainer.pip_index_url else constants.DEFAULT_PIP_INDEX_URL,
+                    pip_index_urls=trainer.pip_index_urls if trainer.pip_index_urls else constants.DEFAULT_PIP_INDEX_URLS,
                     packages=trainer.packages_to_install,
                 )
             training_command = local_utils.get_command_using_train_func(
@@ -110,6 +114,7 @@ class LocalProcessBackend(ExecutionBackend):
                 name="{}-deps".format(train_job_name),
                 command=deps_command,
                 debug=self.cfg.debug,
+                execution_dir=target_dir,
                 env=trainer.env
             )
             deps_job.start()
@@ -122,6 +127,7 @@ class LocalProcessBackend(ExecutionBackend):
                 name="{}-train".format(train_job_name),
                 command=training_command,
                 debug=self.cfg.debug,
+                execution_dir=target_dir,
                 env=trainer.env,
                 dependencies=training_dependencies,
             )
@@ -137,6 +143,7 @@ class LocalProcessBackend(ExecutionBackend):
                     name="{}-cleanup".format(train_job_name),
                     command=cleanup_command,
                     debug=self.cfg.debug,
+                    execution_dir=target_dir,
                     env=trainer.env,
                     dependencies=cleanup_dependencies,
                 )
@@ -152,7 +159,7 @@ class LocalProcessBackend(ExecutionBackend):
             types.TrainJob(
                 name=j.name, creation_timestamp=j.created,
                 runtime=runtime, num_nodes=1,
-                steps=[types.Step(name=s.name, pod_name=s.name, status=s.job.status) for s in j.steps],
+                steps=[types.Step(name=s.step_name, pod_name=s.step_name, status=s.job.status) for s in j.steps],
             )
             for j in self.__local_jobs
         ]
@@ -223,22 +230,15 @@ class LocalProcessBackend(ExecutionBackend):
                 _step.job.join(timeout=timeout)
         return self.get_job(name)
 
-    # @szaher support different python versions
     def __setup_runtime(self, train_job_name):
 
         target_dir = tempfile.mkdtemp(prefix=f"{train_job_name}-")
-        venv.create(env_dir=target_dir, with_pip=True)
+        venv.create(env_dir=target_dir, with_pip=False)
 
         python_bin = Path(target_dir) / "bin" / "python"
         if not os.path.exists(python_bin):
             raise RuntimeError(f"Python executable not found at {python_bin}")
         pip_bin = Path(target_dir) / "bin" / "pip"
-
-        if not os.path.exists(pip_bin):
-            raise RuntimeError(f"Python executable not found at {pip_bin}")
-
-        # change execution directory to the venv temp directory
-        os.chdir(target_dir)
 
         return target_dir, python_bin, pip_bin
 
@@ -263,9 +263,13 @@ class LocalProcessBackend(ExecutionBackend):
         return status
 
     def __register_job(self, train_job_name, step_name, job):
+        print("Registering job '%s'" % train_job_name)
         _job = [j for j in self.__local_jobs if j.name == train_job_name]
+        print("Available jobs: ", _job)
         if not _job:
+            print("Creating new job '%s'" % train_job_name)
             _job = LocalBackendJobs(name=train_job_name, created=datetime.now())
+            self.__local_jobs.append(_job)
         else:
             _job = _job[0]
         _step = [s for s in _job.steps if s.step_name == step_name]
@@ -274,5 +278,3 @@ class LocalProcessBackend(ExecutionBackend):
             _job.steps.append(_step)
         else:
             logger.warning("Step '{}' already registered.".format(step_name))
-
-        self.__local_jobs.append(_job)
