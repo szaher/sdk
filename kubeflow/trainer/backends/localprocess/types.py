@@ -16,7 +16,7 @@ from datetime import datetime
 from typing import List, Optional
 
 from pydantic import BaseModel
-from kubeflow_trainer_api import models
+from kubeflow_trainer_api.models import trainer_v1alpha1_ml_policy
 
 from kubeflow.trainer.backends.localprocess.job import LocalJob
 from kubeflow.trainer.types import types
@@ -29,10 +29,9 @@ class LocalProcessBackendConfig(BaseModel):
     run_in_venv_dir: bool = True
 
 
-
 class LocalRuntime(BaseModel):
     runtime: types.Runtime = None
-    ml_policy: models.trainer_v1alpha1_ml_policy
+    ml_policy: trainer_v1alpha1_ml_policy.TrainerV1alpha1MLPolicy
 
     class Config:
         arbitrary_types_allowed = True

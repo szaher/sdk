@@ -3,14 +3,12 @@ import os
 import textwrap
 from pathlib import Path
 from string import Template
-from tkinter import Listbox
 from typing import List, Callable, Optional, Dict, Any
 
 from kubeflow_trainer_api import models
 
 from kubeflow.trainer.constants import constants
 from kubeflow.trainer.constants import local_exec_constants
-from kubeflow.trainer.constants.constants import GPU_LABEL
 from kubeflow.trainer.types import types
 
 
@@ -107,7 +105,10 @@ def get_command_using_train_func(
     func_code = inspect.getsource(train_func)
 
     # Extract the file name where the function is defined and move it the venv directory.
-    func_file = Path(venv_dir) / "{}-{}".format(train_job_name, os.path.basename(inspect.getfile(train_func)))
+    func_file = Path(venv_dir) / "{}-{}".format(
+        train_job_name,
+        os.path.basename(inspect.getfile(train_func))
+    )
 
     # Function might be defined in some indented scope (e.g. in another function).
     # We need to dedent the function code.

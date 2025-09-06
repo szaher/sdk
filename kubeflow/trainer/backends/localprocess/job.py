@@ -25,8 +25,8 @@ logger = logging.getLogger(__name__)
 
 class LocalJob(threading.Thread):
     def __init__(
-            self, name, command: Union[List, Tuple[str], str],  execution_dir:str = None, debug: bool=False,
-            env: Dict[str, str] = None, dependencies: List = None,
+            self, name, command: Union[List, Tuple[str], str],  execution_dir:str = None,
+            debug: bool=False, env: Dict[str, str] = None, dependencies: List = None,
     ):
         """Create a LocalJob. Create a local subprocess with threading to allow users
         to create background jobs.
@@ -116,7 +116,9 @@ class LocalJob(threading.Thread):
             msg = (f"[{self.name}] Completed with code {self._returncode}"
                    f" in {self._end_time - self._start_time} seconds.")
             # set status based on success or failure
-            self._status = constants.TRAINJOB_COMPLETE if self._success else constants.TRAINJOB_FAILED
+            self._status = constants.TRAINJOB_COMPLETE if self._success else (
+                constants.TRAINJOB_FAILED
+            )
             self._stdout += msg
             if self.debug:
                 logger.debug(self._stdout)

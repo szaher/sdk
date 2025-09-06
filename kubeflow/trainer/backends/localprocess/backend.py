@@ -25,7 +25,9 @@ from typing import List, Optional, Set, Dict, Union
 from kubeflow.trainer.constants import constants
 from kubeflow.trainer.types import types
 from kubeflow.trainer.backends.base import ExecutionBackend
-from kubeflow.trainer.backends.localprocess.types import LocalProcessBackendConfig, LocalBackendJobs, LocalBackendStep
+from kubeflow.trainer.backends.localprocess.types import (
+    LocalProcessBackendConfig, LocalBackendJobs, LocalBackendStep
+)
 from kubeflow.trainer.backends.localprocess.runtimes import local_runtimes
 from kubeflow.trainer.backends.localprocess.job import LocalJob
 from kubeflow.trainer.backends.localprocess import utils as local_utils
@@ -62,7 +64,9 @@ class LocalProcessBackend(ExecutionBackend):
         trainer: Optional[Union[types.CustomTrainer, types.BuiltinTrainer]] = None,
     ) -> str:
 
-        train_job_name = "kft-{}".format(random.choice(string.ascii_lowercase) + uuid.uuid4().hex[:11])
+        train_job_name = "kft-{}".format(
+            random.choice(string.ascii_lowercase) + uuid.uuid4().hex[:11],
+        )
         # Build the env
         if not trainer:
             raise ValueError("Cannot create TrainJob without a Trainer")
@@ -94,7 +98,8 @@ class LocalProcessBackend(ExecutionBackend):
                 deps_command = local_utils.get_dependencies_command(
                     python_bin=python_bin,
                     pip_bin=str(pip_bin),
-                    pip_index_urls=trainer.pip_index_urls if trainer.pip_index_urls else constants.DEFAULT_PIP_INDEX_URLS,
+                    pip_index_urls=trainer.pip_index_urls if trainer.pip_index_urls else
+                    constants.DEFAULT_PIP_INDEX_URLS,
                     packages=trainer.packages_to_install,
                 )
             training_command = local_utils.get_command_using_train_func(
@@ -159,7 +164,10 @@ class LocalProcessBackend(ExecutionBackend):
             types.TrainJob(
                 name=j.name, creation_timestamp=j.created,
                 runtime=runtime, num_nodes=1,
-                steps=[types.Step(name=s.step_name, pod_name=s.step_name, status=s.job.status) for s in j.steps],
+                steps=[
+                    types.Step(name=s.step_name, pod_name=s.step_name, status=s.job.status)
+                    for s in j.steps
+                ],
             )
             for j in self.__local_jobs
         ]
@@ -178,7 +186,10 @@ class LocalProcessBackend(ExecutionBackend):
         return types.TrainJob(
             name=j[0].name,
             creation_timestamp=j[0].created,
-            steps=[types.Step(name=s.step_name, pod_name=s.step_name, status=s.job.status) for s in j[0].steps],
+            steps=[
+                types.Step(name=s.step_name, pod_name=s.step_name, status=s.job.status)
+                for s in j[0].steps
+            ],
             runtime=None, num_nodes=1, status=status,
         )
 
@@ -263,11 +274,8 @@ class LocalProcessBackend(ExecutionBackend):
         return status
 
     def __register_job(self, train_job_name, step_name, job):
-        print("Registering job '%s'" % train_job_name)
         _job = [j for j in self.__local_jobs if j.name == train_job_name]
-        print("Available jobs: ", _job)
         if not _job:
-            print("Creating new job '%s'" % train_job_name)
             _job = LocalBackendJobs(name=train_job_name, created=datetime.now())
             self.__local_jobs.append(_job)
         else:
