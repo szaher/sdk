@@ -14,10 +14,8 @@
 
 import inspect
 import os
-import queue
 import textwrap
-import threading
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Optional
 from urllib.parse import urlparse
 
 from kubeflow.trainer.constants import constants
@@ -37,7 +35,7 @@ def get_default_target_namespace(context: Optional[str] = None) -> str:
             # If context is set, we should get namespace from it.
             if context:
                 for c in all_contexts:
-                    if isinstance(c, Dict) and c.get("name") == context:
+                    if isinstance(c, dict) and c.get("name") == context:
                         return c["context"]["namespace"]
             # Otherwise, try to get namespace from the current context.
             return current_context["context"]["namespace"]
@@ -255,30 +253,32 @@ def get_resources_per_node(
 
 def get_script_for_python_packages(
     packages_to_install: list[str],
-    pip_index_url: str,
+    pip_index_urls: list[str],
     is_mpi: bool,
-    python_binary: Optional[str] = "python",
 ) -> str:
     """
-    Get init script to install Python packages from the given pip index URL.
+    Get init script to install Python packages from the given pip index URLs.
     """
-    # packages_str = " ".join([str(package) for package in packages_to_install])
     packages_str = " ".join(packages_to_install)
+
+    # first url will be the index-url.
+    options = [f"--index-url {pip_index_urls[0]}"]
+    options.extend(f"--extra-index-url {extra_index_url}" for extra_index_url in pip_index_urls[1:])
+    # For the OpenMPI, the packages must be installed for the mpiuser.
+    if is_mpi:
+        options.append("--user")
 
     script_for_python_packages = textwrap.dedent(
         """
         if ! [ -x "$(command -v pip)" ]; then
-            {python} -m ensurepip || {python} -m ensurepip --user 
+            python -m ensurepip || python -m ensurepip --user || apt-get install python-pip
         fi
 
-        PIP_DISABLE_PIP_VERSION_CHECK=1 {python} -m pip install --quiet \
-        --no-warn-script-location --index-url {pip_index_url} {packages_str} {user}
+        PIP_DISABLE_PIP_VERSION_CHECK=1 python -m pip install --quiet \
+        --no-warn-script-location {} {}
         """.format(
-            python=python_binary,
-            pip_index_url=pip_index_url,
-            packages_str=packages_str,
-            # For the OpenMPI, the packages must be installed for the mpiuser.
-            user="--user" if is_mpi else "",
+            " ".join(options),
+            packages_str,
         )
     )
 
@@ -288,10 +288,9 @@ def get_script_for_python_packages(
 def get_command_using_train_func(
     runtime: types.Runtime,
     train_func: Callable,
-    train_func_parameters: Optional[Dict[str, Any]],
-    pip_index_url: str,
-    packages_to_install: Optional[list[str]] = None,
-    python_binary: Optional[str] = "python",
+    train_func_parameters: Optional[dict[str, Any]],
+    pip_index_urls: list[str],
+    packages_to_install: Optional[list[str]],
 ) -> list[str]:
     """
     Get the Trainer container command from the given training function and parameters.
@@ -336,9 +335,8 @@ def get_command_using_train_func(
     if packages_to_install:
         install_packages = get_script_for_python_packages(
             packages_to_install,
-            pip_index_url,
+            pip_index_urls,
             is_mpi,
-            python_binary,
         )
 
     # Add function code to the Trainer command.
@@ -378,7 +376,7 @@ def get_trainer_crd_from_custom_trainer(
         runtime,
         trainer.func,
         trainer.func_args,
-        trainer.pip_index_url,
+        trainer.pip_index_urls,
         trainer.packages_to_install,
     )
 
@@ -575,22 +573,3 @@ def get_model_initializer(
     )
 
     return model_initializer
-
-
-def wrap_log_stream(q: queue.Queue, log_stream: Any):
-    while True:
-        try:
-            logline = next(log_stream)
-            q.put(logline)
-        except StopIteration:
-            q.put(None)
-            return
-
-
-def get_log_queue_pool(log_streams: list[Any]) -> list[queue.Queue]:
-    pool = []
-    for log_stream in log_streams:
-        q = queue.Queue(maxsize=100)
-        pool.append(q)
-        threading.Thread(target=wrap_log_stream, args=(q, log_stream)).start()
-    return pool
