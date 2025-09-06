@@ -101,6 +101,9 @@ GPU_LABEL = "nvidia.com/gpu"
 # The label for TPU in the container resources.
 TPU_LABEL = "google.com/tpu"
 
+# The label for MPS in the local and container resources.
+MPS_LABEL = "apple.com/mps"
+
 # The label key to identify the JobSet name of the Pod.
 JOBSET_NAME_LABEL = "jobset.sigs.k8s.io/jobset-name"
 
