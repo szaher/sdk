@@ -11,36 +11,33 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
 import copy
 import logging
 import multiprocessing
-import queue
 import random
 import string
 import time
 import uuid
-
-from typing import Dict, List, Optional, Union, Set
-
-from kubernetes import client, watch
-from kubernetes import config as k8s_config
-from kubeflow_trainer_api import models
+from typing import Optional, Union, Iterator
+import re
 
 from kubeflow.trainer.constants import constants
 from kubeflow.trainer.types import types
-from kubeflow.trainer.backends.kubernetes.types import KubernetesBackendConfig
 from kubeflow.trainer.utils import utils
-from kubeflow.trainer.backends import base
-
+from kubeflow_trainer_api import models
+from kubernetes import client, config, watch
+from kubeflow.trainer.backends.base import ExecutionBackend
+from kubeflow.trainer.backends.kubernetes import types as k8s_types
 
 logger = logging.getLogger(__name__)
 
 
-class KubernetesBackend(base.TrainingBackend):
-
-    def __init__(self,
-                 cfg: KubernetesBackendConfig,
-                 ):
+class KubernetesBackend(ExecutionBackend):
+    def __init__(
+        self,
+        cfg: k8s_types.KubernetesBackendConfig,
+    ):
         if cfg.namespace is None:
             cfg.namespace = utils.get_default_target_namespace(cfg.context)
 
@@ -48,9 +45,9 @@ class KubernetesBackend(base.TrainingBackend):
         if cfg.client_configuration is None:
             # Load kube-config or in-cluster config.
             if cfg.config_file or not utils.is_running_in_k8s():
-                k8s_config.load_kube_config(config_file=cfg.config_file, context=cfg.context)
+                config.load_kube_config(config_file=cfg.config_file, context=cfg.context)
             else:
-                k8s_config.load_incluster_config()
+                config.load_incluster_config()
 
         k8s_client = client.ApiClient(cfg.client_configuration)
         self.custom_api = client.CustomObjectsApi(k8s_client)
@@ -58,8 +55,7 @@ class KubernetesBackend(base.TrainingBackend):
 
         self.namespace = cfg.namespace
 
-    def list_runtimes(self) -> List[types.Runtime]:
-
+    def list_runtimes(self) -> list[types.Runtime]:
         result = []
         try:
             thread = self.custom_api.list_cluster_custom_object(
@@ -89,20 +85,21 @@ class KubernetesBackend(base.TrainingBackend):
                     continue
                 result.append(self.__get_runtime_from_crd(runtime))
 
-        except multiprocessing.TimeoutError:
+        except multiprocessing.TimeoutError as e:
             raise TimeoutError(
                 f"Timeout to list {constants.CLUSTER_TRAINING_RUNTIME_KIND}s "
                 f"in namespace: {self.namespace}"
-            )
-        except Exception:
+            ) from e
+        except Exception as e:
             raise RuntimeError(
                 f"Failed to list {constants.CLUSTER_TRAINING_RUNTIME_KIND}s "
                 f"in namespace: {self.namespace}"
-            )
+            ) from e
 
         return result
 
     def get_runtime(self, name: str) -> types.Runtime:
+        """Get the the Runtime object"""
 
         try:
             thread = self.custom_api.get_cluster_custom_object(
@@ -117,21 +114,20 @@ class KubernetesBackend(base.TrainingBackend):
                 thread.get(constants.DEFAULT_TIMEOUT)  # type: ignore
             )
 
-        except multiprocessing.TimeoutError:
+        except multiprocessing.TimeoutError as e:
             raise TimeoutError(
                 f"Timeout to get {constants.CLUSTER_TRAINING_RUNTIME_PLURAL}: "
                 f"{self.namespace}/{name}"
-            )
-        except Exception:
+            ) from e
+        except Exception as e:
             raise RuntimeError(
                 f"Failed to get {constants.CLUSTER_TRAINING_RUNTIME_PLURAL}: "
                 f"{self.namespace}/{name}"
-            )
+            ) from e
 
         return self.__get_runtime_from_crd(runtime)  # type: ignore
 
     def get_runtime_packages(self, runtime: types.Runtime):
-
         if runtime.trainer.trainer_type == types.TrainerType.BUILTIN_TRAINER:
             raise ValueError("Cannot get Runtime packages for BuiltinTrainer")
 
@@ -154,9 +150,7 @@ class KubernetesBackend(base.TrainingBackend):
 
             # Print Python packages.
             if shutil.which("pip"):
-                pip_list = subprocess.run(
-                    ["pip", "list"], capture_output=True, text=True
-                )
+                pip_list = subprocess.run(["pip", "list"], capture_output=True, text=True)
                 print(pip_list.stdout)
             else:
                 print("Unable to get installed packages: pip command not found")
@@ -164,9 +158,7 @@ class KubernetesBackend(base.TrainingBackend):
             # Print nvidia-smi if GPUs are available.
             if shutil.which("nvidia-smi"):
                 print("Available GPUs on the single training node")
-                nvidia_smi = subprocess.run(
-                    ["nvidia-smi"], capture_output=True, text=True
-                )
+                nvidia_smi = subprocess.run(["nvidia-smi"], capture_output=True, text=True)
                 print(nvidia_smi.stdout)
 
         # Create the TrainJob and wait until it completes.
@@ -176,14 +168,12 @@ class KubernetesBackend(base.TrainingBackend):
             trainer=types.CustomTrainer(
                 func=print_packages,
                 num_nodes=1,
-                resources_per_node=(
-                    {"cpu": 1} if runtime_copy.trainer.device != "gpu" else None
-                ),
+                resources_per_node=({"cpu": 1} if runtime_copy.trainer.device != "gpu" else None),
             ),
         )
 
         self.wait_for_job_status(job_name)
-        print(self.get_job_logs(job_name)["node-0"])
+        print("\n".join(self.get_job_logs(name=job_name)))
         self.delete_job(job_name)
 
     def train(
@@ -192,31 +182,6 @@ class KubernetesBackend(base.TrainingBackend):
         initializer: Optional[types.Initializer] = None,
         trainer: Optional[Union[types.CustomTrainer, types.BuiltinTrainer]] = None,
     ) -> str:
-        """
-        Create the TrainJob. You can configure these types of training task:
-
-        - Custom Training Task: Training with a self-contained function that encapsulates
-            the entire model training process, e.g. `CustomTrainer`.
-        - Config-driven Task with Existing Trainer: Training with a trainer that already includes
-            the post-training logic, requiring only parameter adjustments, e.g. `BuiltinTrainer`.
-
-        Args:
-            runtime: Reference to one of existing Runtimes. By default the
-                torch-distributed Runtime is used.
-            initializer:
-                Configuration for the dataset and model initializers.
-            trainer:
-                Configuration for Custom Training Task or Config-driven Task with Builtin Trainer.
-
-        Returns:
-            str: The unique name of the TrainJob that has been generated.
-
-        Raises:
-            ValueError: Input arguments are invalid.
-            TimeoutError: Timeout to create TrainJobs.
-            RuntimeError: Failed to create TrainJobs.
-        """
-
         if runtime is None:
             runtime = self.get_runtime(constants.TORCH_RUNTIME)
 
@@ -231,19 +196,13 @@ class KubernetesBackend(base.TrainingBackend):
             # If users choose to use a custom training function.
             if isinstance(trainer, types.CustomTrainer):
                 if runtime.trainer.trainer_type != types.TrainerType.CUSTOM_TRAINER:
-                    raise ValueError(
-                        f"CustomTrainer can't be used with {runtime} runtime"
-                    )
-                trainer_crd = utils.get_trainer_crd_from_custom_trainer(
-                    runtime, trainer
-                )
+                    raise ValueError(f"CustomTrainer can't be used with {runtime} runtime")
+                trainer_crd = utils.get_trainer_crd_from_custom_trainer(runtime, trainer)
 
             # If users choose to use a builtin trainer for post-training.
             elif isinstance(trainer, types.BuiltinTrainer):
                 if runtime.trainer.trainer_type != types.TrainerType.BUILTIN_TRAINER:
-                    raise ValueError(
-                        f"BuiltinTrainer can't be used with {runtime} runtime"
-                    )
+                    raise ValueError(f"BuiltinTrainer can't be used with {runtime} runtime")
                 trainer_crd = utils.get_trainer_crd_from_builtin_trainer(
                     runtime, trainer, initializer
                 )
@@ -257,16 +216,10 @@ class KubernetesBackend(base.TrainingBackend):
         train_job = models.TrainerV1alpha1TrainJob(
             apiVersion=constants.API_VERSION,
             kind=constants.TRAINJOB_KIND,
-            metadata=models.IoK8sApimachineryPkgApisMetaV1ObjectMeta(
-                name=train_job_name
-            ),
+            metadata=models.IoK8sApimachineryPkgApisMetaV1ObjectMeta(name=train_job_name),
             spec=models.TrainerV1alpha1TrainJobSpec(
                 runtimeRef=models.TrainerV1alpha1RuntimeRef(name=runtime.name),
-                trainer=(
-                    trainer_crd
-                    if trainer_crd != models.TrainerV1alpha1Trainer()
-                    else None
-                ),
+                trainer=(trainer_crd if trainer_crd != models.TrainerV1alpha1Trainer() else None),
                 initializer=(
                     models.TrainerV1alpha1Initializer(
                         dataset=utils.get_dataset_initializer(initializer.dataset),
@@ -287,14 +240,14 @@ class KubernetesBackend(base.TrainingBackend):
                 constants.TRAINJOB_PLURAL,
                 train_job.to_dict(),
             )
-        except multiprocessing.TimeoutError:
+        except multiprocessing.TimeoutError as e:
             raise TimeoutError(
                 f"Timeout to create {constants.TRAINJOB_KIND}: {self.namespace}/{train_job_name}"
-            )
-        except Exception:
+            ) from e
+        except Exception as e:
             raise RuntimeError(
                 f"Failed to create {constants.TRAINJOB_KIND}: {self.namespace}/{train_job_name}"
-            )
+            ) from e
 
         logger.debug(
             f"{constants.TRAINJOB_KIND} {self.namespace}/{train_job_name} has been created"
@@ -302,20 +255,7 @@ class KubernetesBackend(base.TrainingBackend):
 
         return train_job_name
 
-    def list_jobs(
-        self, runtime: Optional[types.Runtime] = None
-    ) -> List[types.TrainJob]:
-        """List of all TrainJobs.
-
-        Returns:
-            List[TrainerV1alpha1TrainJob]: List of created TrainJobs.
-                If no TrainJob exist, an empty list is returned.
-
-        Raises:
-            TimeoutError: Timeout to list TrainJobs.
-            RuntimeError: Failed to list TrainJobs.
-        """
-
+    def list_jobs(self, runtime: Optional[types.Runtime] = None) -> list[types.TrainJob]:
         result = []
         try:
             thread = self.custom_api.list_namespaced_custom_object(
@@ -345,14 +285,14 @@ class KubernetesBackend(base.TrainingBackend):
 
                 result.append(self.__get_trainjob_from_crd(trainjob))
 
-        except multiprocessing.TimeoutError:
+        except multiprocessing.TimeoutError as e:
             raise TimeoutError(
                 f"Timeout to list {constants.TRAINJOB_KIND}s in namespace: {self.namespace}"
-            )
-        except Exception:
+            ) from e
+        except Exception as e:
             raise RuntimeError(
                 f"Failed to list {constants.TRAINJOB_KIND}s in namespace: {self.namespace}"
-            )
+            ) from e
 
         return result
 
@@ -373,14 +313,14 @@ class KubernetesBackend(base.TrainingBackend):
                 thread.get(constants.DEFAULT_TIMEOUT)  # type: ignore
             )
 
-        except multiprocessing.TimeoutError:
+        except multiprocessing.TimeoutError as e:
             raise TimeoutError(
                 f"Timeout to get {constants.TRAINJOB_KIND}: {self.namespace}/{name}"
-            )
-        except Exception:
+            ) from e
+        except Exception as e:
             raise RuntimeError(
                 f"Failed to get {constants.TRAINJOB_KIND}: {self.namespace}/{name}"
-            )
+            ) from e
 
         return self.__get_trainjob_from_crd(trainjob)  # type: ignore
 
@@ -388,125 +328,55 @@ class KubernetesBackend(base.TrainingBackend):
         self,
         name: str,
         follow: Optional[bool] = False,
-        step: str = constants.NODE,
-        node_rank: int = 0,
-    ) -> Dict[str, str]:
-        """Get the logs from TrainJob"""
-
+        step: str = constants.NODE + "-0",
+    ) -> Iterator[str]:
+        """Get the TrainJob logs"""
         # Get the TrainJob Pod name.
         pod_name = None
         for c in self.get_job(name).steps:
-            if c.status != constants.POD_PENDING:
-                if c.name == step or c.name == f"{step}-{node_rank}":
-                    pod_name = c.pod_name
+            if c.status != constants.POD_PENDING and c.name == step:
+                pod_name = c.pod_name
+                break
         if pod_name is None:
-            return {}
+            return
 
-        # Dict where key is the Pod type and value is the Pod logs.
-        logs_dict = {}
-
-        # TODO (andreyvelich): Potentially, refactor this.
-        # Support logging of multiple Pods.
-        # TODO (andreyvelich): Currently, follow is supported only for node container.
-        if follow and step == constants.NODE:
-            log_streams = []
-            log_streams.append(
-                watch.Watch().stream(
+        # Remove the number for the node step.
+        container_name = re.sub(r"-\d+$", "", step)
+        try:
+            if follow:
+                log_stream = watch.Watch().stream(
                     self.core_api.read_namespaced_pod_log,
                     name=pod_name,
                     namespace=self.namespace,
-                    container=constants.NODE,
+                    container=container_name,
+                    follow=True,
                 )
-            )
-            finished = [False] * len(log_streams)
 
-            # Create thread and queue per stream, for non-blocking iteration.
-            log_queue_pool = utils.get_log_queue_pool(log_streams)
-
-            # Iterate over every watching pods' log queue
-            while True:
-                for index, log_queue in enumerate(log_queue_pool):
-                    if all(finished):
-                        break
-                    if finished[index]:
-                        continue
-                    # grouping the every 50 log lines of the same pod.
-                    for _ in range(50):
-                        try:
-                            logline = log_queue.get(timeout=1)
-                            if logline is None:
-                                finished[index] = True
-                                break
-                            # Print logs to the StdOut and update results dict.
-                            print(f"[{step}-{node_rank}]: {logline}")
-                            logs_dict[f"{step}-{node_rank}"] = (
-                                logs_dict.get(f"{step}-{node_rank}", "")
-                                + logline
-                                + "\n"
-                            )
-                        except queue.Empty:
-                            break
-                if all(finished):
-                    return logs_dict
-
-        try:
-            if step == constants.DATASET_INITIALIZER:
-                logs_dict[constants.DATASET_INITIALIZER] = (
-                    self.core_api.read_namespaced_pod_log(
-                        name=pod_name,
-                        namespace=self.namespace,
-                        container=constants.DATASET_INITIALIZER,
-                    )
-                )
-            elif step == constants.MODEL_INITIALIZER:
-                logs_dict[constants.MODEL_INITIALIZER] = (
-                    self.core_api.read_namespaced_pod_log(
-                        name=pod_name,
-                        namespace=self.namespace,
-                        container=constants.MODEL_INITIALIZER,
-                    )
-                )
+                # Stream logs incrementally.
+                for logline in log_stream:
+                    yield logline  # type:ignore
             else:
-                logs_dict[f"{step}-{node_rank}"] = (
-                    self.core_api.read_namespaced_pod_log(
-                        name=pod_name,
-                        namespace=self.namespace,
-                        container=constants.NODE,
-                    )
+                logs = self.core_api.read_namespaced_pod_log(
+                    name=pod_name,
+                    namespace=self.namespace,
+                    container=container_name,
                 )
 
-        except Exception:
+                for line in logs.splitlines():
+                    yield line
+
+        except Exception as e:
             raise RuntimeError(
                 f"Failed to read logs for the pod {self.namespace}/{pod_name}"
-            )
-
-        return logs_dict
+            ) from e
 
     def wait_for_job_status(
         self,
         name: str,
-        status: Set[str] = {constants.TRAINJOB_COMPLETE},
+        status: set[str] = {constants.TRAINJOB_COMPLETE},
         timeout: int = 600,
         polling_interval: int = 2,
     ) -> types.TrainJob:
-        """Wait for TrainJob to reach the desired status
-
-        Args:
-            name: Name of the TrainJob.
-            status: Set of expected statuses. It must be subset of Created, Running, Complete, and
-                Failed statuses.
-            timeout: How many seconds to wait until TrainJob reaches one of the expected conditions.
-            polling_interval: The polling interval in seconds to check TrainJob status.
-
-        Returns:
-            TrainJob: The training job that reaches the desired status.
-
-        Raises:
-            ValueError: The input values are incorrect.
-            RuntimeError: Failed to get TrainJob or TrainJob reaches unexpected Failed status.
-            TimeoutError: Timeout to wait for TrainJob status.
-        """
-
         job_statuses = {
             constants.TRAINJOB_CREATED,
             constants.TRAINJOB_RUNNING,
@@ -514,9 +384,7 @@ class KubernetesBackend(base.TrainingBackend):
             constants.TRAINJOB_FAILED,
         }
         if not status.issubset(job_statuses):
-            raise ValueError(
-                f"Expected status {status} must be a subset of {job_statuses}"
-            )
+            raise ValueError(f"Expected status {status} must be a subset of {job_statuses}")
 
         if polling_interval > timeout:
             raise ValueError(
@@ -541,21 +409,9 @@ class KubernetesBackend(base.TrainingBackend):
 
             time.sleep(polling_interval)
 
-        raise TimeoutError(
-            f"Timeout waiting for TrainJob {name} to reach status: {status} status"
-        )
+        raise TimeoutError(f"Timeout waiting for TrainJob {name} to reach status: {status} status")
 
     def delete_job(self, name: str):
-        """Delete the TrainJob.
-
-        Args:
-            name: Name of the TrainJob.
-
-        Raises:
-            TimeoutError: Timeout to delete TrainJob.
-            RuntimeError: Failed to delete TrainJob.
-        """
-
         try:
             self.custom_api.delete_namespaced_custom_object(
                 constants.GROUP,
@@ -564,24 +420,21 @@ class KubernetesBackend(base.TrainingBackend):
                 constants.TRAINJOB_PLURAL,
                 name=name,
             )
-        except multiprocessing.TimeoutError:
+        except multiprocessing.TimeoutError as e:
             raise TimeoutError(
                 f"Timeout to delete {constants.TRAINJOB_KIND}: {self.namespace}/{name}"
-            )
-        except Exception:
+            ) from e
+        except Exception as e:
             raise RuntimeError(
                 f"Failed to delete {constants.TRAINJOB_KIND}: {self.namespace}/{name}"
-            )
+            ) from e
 
-        logger.debug(
-            f"{constants.TRAINJOB_KIND} {self.namespace}/{name} has been deleted"
-        )
+        logger.debug(f"{constants.TRAINJOB_KIND} {self.namespace}/{name} has been deleted")
 
     def __get_runtime_from_crd(
         self,
         runtime_crd: models.TrainerV1alpha1ClusterTrainingRuntime,
     ) -> types.Runtime:
-
         if not (
             runtime_crd.metadata
             and runtime_crd.metadata.name
@@ -614,7 +467,6 @@ class KubernetesBackend(base.TrainingBackend):
         self,
         trainjob_crd: models.TrainerV1alpha1TrainJob,
     ) -> types.TrainJob:
-
         if not (
             trainjob_crd.metadata
             and trainjob_crd.metadata.name
@@ -660,12 +512,7 @@ class KubernetesBackend(base.TrainingBackend):
             for pod in pod_list.items:
                 # Pod must have labels to detect the TrainJob step.
                 # Every Pod always has a single TrainJob step.
-                if not (
-                    pod.metadata
-                    and pod.metadata.name
-                    and pod.metadata.labels
-                    and pod.spec
-                ):
+                if not (pod.metadata and pod.metadata.name and pod.metadata.labels and pod.spec):
                     raise Exception(f"TrainJob Pod is invalid: {pod}")
 
                 # Get the Initializer step.
@@ -695,14 +542,14 @@ class KubernetesBackend(base.TrainingBackend):
                             int(pod.metadata.labels[constants.JOB_INDEX_LABEL]),
                         )
                     )
-        except multiprocessing.TimeoutError:
+        except multiprocessing.TimeoutError as e:
             raise TimeoutError(
                 f"Timeout to list {constants.TRAINJOB_KIND}'s steps: {namespace}/{name}"
-            )
-        except Exception:
+            ) from e
+        except Exception as e:
             raise RuntimeError(
                 f"Failed to list {constants.TRAINJOB_KIND}'s steps: {namespace}/{name}"
-            )
+            ) from e
 
         # Update the TrainJob status from its conditions.
         if trainjob_crd.status and trainjob_crd.status.conditions:

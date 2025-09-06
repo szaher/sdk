@@ -14,12 +14,10 @@
 
 from typing import Optional
 from kubernetes import client
-
-from kubeflow.trainer.types import types
-
+from pydantic import BaseModel
 
 
-class KubernetesBackendConfig(types.BackendConfig):
+class KubernetesBackendConfig(BaseModel):
     namespace: Optional[str] = None
     config_file: Optional[str] = None
     context: Optional[str] = None

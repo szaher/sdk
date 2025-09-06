@@ -11,22 +11,22 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
+import os
 import threading
 import subprocess
 import logging
 from datetime import datetime
-from typing import List, Union
+from typing import List, Union, Dict, Tuple
 
-from kubeflow.trainer.backends.local import resource_manager
+from kubeflow.trainer.constants import constants
 
 logger = logging.getLogger(__name__)
 
 
 class LocalJob(threading.Thread):
     def __init__(
-            self, name, command: Union[List, str], mem_limit=None,
-            cpu_time=None, cpu_limit=None, nice=0
+            self, name, command: Union[List, Tuple[str], str],  execution_dir:str = None,
+            debug: bool=False, env: Dict[str, str] = None, dependencies: List = None,
     ):
         """Create a LocalJob. Create a local subprocess with threading to allow users
         to create background jobs.
@@ -34,6 +34,14 @@ class LocalJob(threading.Thread):
         :type name: str
         :param command: The command to run.
         :type command: str
+        :param execution_dir: The execution directory.
+        :type execution_dir: str
+        :param debug: If true, run in debug mode.
+        :type debug: bool
+        :param env: Environment variables.
+        :type env: Dict[str, str]
+        :param dependencies: List of dependencies.
+        :type dependencies: List[str]
         """
         super().__init__()
         self.name = name
@@ -41,41 +49,53 @@ class LocalJob(threading.Thread):
         self._stdout = ""
         self._returncode = None
         self._success = False
+        self._status = constants.TRAINJOB_CREATED
         self._lock = threading.Lock()
         self._process = None
         self._output_updated = threading.Event()
         self._cancel_requested = threading.Event()
         self._start_time = None
         self._end_time = None
-        # limit cpu and memory resources
-        self.__memory_limit = mem_limit
-        self.__cpu_time = cpu_time
-        self.__cpu_limit = cpu_limit
-        self.__nice = nice
+        self.env = env or {}
+        self.dependencies = dependencies or []
+        self.debug = debug
+        self.execution_dir = execution_dir or os.getcwd()
 
     def run(self):
-        logger.debug(f"[{self.name}] Starting...")
+        for dep in self.dependencies:
+            dep.join()
+            if not dep.success:
+                with self._lock:
+                    self._stdout = f"Dependency {dep.name} failed. Skipping"
+                return
+
+        current_dir = os.getcwd()
         try:
             self._start_time = datetime.now()
+            if self.debug:
+                _c = " ".join(self.command)
+                logger.debug(f"[{self.name}] Started at {self._start_time} with command: \n {_c}")
+
+            # change working directory to venv before executing script
+            os.chdir(self.execution_dir)
+
             self._process = subprocess.Popen(
                 self.command,
-                shell=True,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,
-                # @szaher how do we need to handle signals passed to child processes?
-                preexec_fn=lambda: resource_manager.setup_local_process(
-                    mem_limit=self.__memory_limit,
-                    cpu_time=self.__cpu_time,
-                    cpu_limit=self.__cpu_limit,
-                    nice=self.__nice,
-                )
+                encoding="utf-8",
+                bufsize=1,
+                env=self.env,
             )
+            # set job status
+            self._status = constants.TRAINJOB_RUNNING
 
             while True:
                 if self._cancel_requested.is_set():
                     self._process.terminate()
-                    self._stdout += "[TrainingCancelled]\n"
+                    self._stdout += "[JobCancelled]\n"
+                    self._status = constants.TRAINJOB_FAILED
                     self._success = False
                     return
 
@@ -95,12 +115,21 @@ class LocalJob(threading.Thread):
             self._success = (self._process.returncode == 0)
             msg = (f"[{self.name}] Completed with code {self._returncode}"
                    f" in {self._end_time - self._start_time} seconds.")
+            # set status based on success or failure
+            self._status = constants.TRAINJOB_COMPLETE if self._success else (
+                constants.TRAINJOB_FAILED
+            )
             self._stdout += msg
+            if self.debug:
+                logger.debug(self._stdout)
 
         except Exception as e:
             with self._lock:
                 self._stdout += f"Exception: {e}\n"
                 self._success = False
+                self._status = constants.TRAINJOB_FAILED
+        finally:
+            os.chdir(current_dir)
 
     @property
     def stdout(self):
@@ -111,6 +140,10 @@ class LocalJob(threading.Thread):
     def success(self):
         return self._success
 
+    @property
+    def status(self):
+        return self._status
+
     def cancel(self):
         self._cancel_requested.set()
 
@@ -119,20 +152,18 @@ class LocalJob(threading.Thread):
         return self._returncode
 
     def logs(self, follow=False) -> List[str]:
-        """Print log lines"""
         if not follow:
             return self._stdout.splitlines()
-        output_lines = ""
+
         try:
-            for line in next(self.__follow_logs()):
-                print(line, end="")
-                output_lines += line
+            for chunk in self.stream_logs():
+                print(chunk, end="", flush=True)  # stream to console live
         except StopIteration:
             pass
 
-        return output_lines.splitlines()
+        return self._stdout.splitlines()
 
-    def __follow_logs(self):
+    def stream_logs(self):
         """Generator that yields new output lines as they come in."""
         last_index = 0
         while self.is_alive() or last_index < len(self._stdout):

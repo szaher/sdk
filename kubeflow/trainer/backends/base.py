@@ -14,61 +14,51 @@
 
 import abc
 
-from typing import Dict, List, Optional, Set
+from typing import Optional, Union, Iterator
 from kubeflow.trainer.constants import constants
 from kubeflow.trainer.types import types
 
 
-class TrainingBackend(abc.ABC):
-
-    @abc.abstractmethod
-    def list_runtimes(self) -> types.RuntimeList:
+class ExecutionBackend(abc.ABC):
+    def list_runtimes(self) -> list[types.Runtime]:
         raise NotImplementedError()
 
-    @abc.abstractmethod
-    def get_runtime(self, name: str) -> Optional[types.TrainingRuntime]:
+    def get_runtime(self, name: str) -> types.Runtime:
         raise NotImplementedError()
 
-    @abc.abstractmethod
-    def train(self,
-              runtime: types.Runtime,
-              initializer: Optional[types.Initializer] = None,
-              trainer: Optional[types.RuntimeTrainer] = None,
-              ) -> str:
+    def get_runtime_packages(self, runtime: types.Runtime):
         raise NotImplementedError()
 
-    @abc.abstractmethod
-    def list_jobs(
-            self, runtime: Optional[types.Runtime] = None
-    ) -> List[types.TrainJobLike]:
+    def train(
+        self,
+        runtime: Optional[types.Runtime] = None,
+        initializer: Optional[types.Initializer] = None,
+        trainer: Optional[Union[types.CustomTrainer, types.BuiltinTrainer]] = None,
+    ) -> str:
         raise NotImplementedError()
 
-    @abc.abstractmethod
-    def get_job(self, name: str) -> Optional[types.TrainJobLike]:
+    def list_jobs(self, runtime: Optional[types.Runtime] = None) -> list[types.TrainJob]:
         raise NotImplementedError()
 
-    @abc.abstractmethod
-    def get_job_logs(self,
-                     name: str,
-                     follow: Optional[bool] = False,
-                     step: str = constants.NODE,
-                     node_rank: int = 0,
-                     ) -> Dict[str, str]:
+    def get_job(self, name: str) -> types.TrainJob:
         raise NotImplementedError()
 
-    @abc.abstractmethod
-    def delete_job(self, name: str) -> None:
+    def get_job_logs(
+        self,
+        name: str,
+        follow: Optional[bool] = False,
+        step: str = constants.NODE + "-0",
+    ) -> Iterator[str]:
         raise NotImplementedError()
 
-    @abc.abstractmethod
     def wait_for_job_status(
-            self,
-            name: str,
-            status: Set[str] = {constants.TRAINJOB_COMPLETE},
-            timeout: int = 600,
-            polling_interval: int = 2,
-    ) -> types.TrainJobLike:
+        self,
+        name: str,
+        status: set[str] = {constants.TRAINJOB_COMPLETE},
+        timeout: int = 600,
+        polling_interval: int = 2,
+    ) -> types.TrainJob:
         raise NotImplementedError()
 
-    def get_runtime_packages(self, runtime: types.TrainingRuntime):
+    def delete_job(self, name: str):
         raise NotImplementedError()

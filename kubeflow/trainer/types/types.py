@@ -13,17 +13,12 @@
 # limitations under the License.
 
 
-import os
-from pathlib import Path
-import sys
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Callable, Dict, Optional, List, Union
-from pydantic import BaseModel
+from typing import Callable, Optional
 
 from kubeflow.trainer.constants import constants
-from kubeflow.trainer.backends.local.job import LocalJob
 
 
 # Configuration for the Custom Trainer.
@@ -37,19 +32,23 @@ class CustomTrainer:
         func_args (`Optional[Dict]`): The arguments to pass to the function.
         packages_to_install (`Optional[List[str]]`):
             A list of Python packages to install before running the function.
-        pip_index_url (`Optional[str]`): The PyPI URL from which to install Python packages.
+        pip_index_urls (`list[str]`): The PyPI URLs from which to install
+            Python packages. The first URL will be the index-url, and remaining ones
+            are extra-index-urls.
         num_nodes (`Optional[int]`): The number of nodes to use for training.
         resources_per_node (`Optional[Dict]`): The computing resources to allocate per node.
         env (`Optional[Dict[str, str]]`): The environment variables to set in the training nodes.
     """
 
     func: Callable
-    func_args: Optional[Dict] = None
+    func_args: Optional[dict] = None
     packages_to_install: Optional[list[str]] = None
-    pip_index_url: str = constants.DEFAULT_PIP_INDEX_URL
+    pip_index_urls: list[str] = field(
+        default_factory=lambda: list(constants.DEFAULT_PIP_INDEX_URLS)
+    )
     num_nodes: Optional[int] = None
-    resources_per_node: Optional[Dict] = None
-    env: Optional[Dict[str, str]] = None
+    resources_per_node: Optional[dict] = None
+    env: Optional[dict[str, str]] = None
 
 
 # TODO(Electronic-Waste): Add more loss functions.
@@ -108,7 +107,7 @@ class TorchTuneInstructDataset:
     split: Optional[str] = None
     train_on_input: Optional[bool] = None
     new_system_prompt: Optional[str] = None
-    column_map: Optional[Dict[str, str]] = None
+    column_map: Optional[dict[str, str]] = None
 
 
 # Configuration for the TorchTune LLM Trainer.
@@ -139,7 +138,7 @@ class TorchTuneConfig:
     loss: Optional[Loss] = None
     num_nodes: Optional[int] = None
     dataset_preprocess_config: Optional[TorchTuneInstructDataset] = None
-    resources_per_node: Optional[Dict] = None
+    resources_per_node: Optional[dict] = None
 
 
 # Configuration for the Builtin Trainer.
@@ -157,9 +156,7 @@ class BuiltinTrainer:
 
 
 # Change it to list: BUILTIN_CONFIGS, once we support more Builtin Trainer configs.
-TORCH_TUNE = (
-    BuiltinTrainer.__annotations__["config"].__name__.lower().replace("config", "")
-)
+TORCH_TUNE = BuiltinTrainer.__annotations__["config"].__name__.lower().replace("config", "")
 
 
 class TrainerType(Enum):
@@ -212,7 +209,7 @@ class TrainJob:
     runtime: Runtime
     steps: list[Step]
     num_nodes: int
-    status: Optional[str] = constants.UNKNOWN
+    status: str = constants.UNKNOWN
 
 
 # Configuration for the HuggingFace dataset initializer.
@@ -243,50 +240,3 @@ class Initializer:
 
     dataset: Optional[HuggingFaceDatasetInitializer] = None
     model: Optional[HuggingFaceModelInitializer] = None
-
-
-# local execution types
-
-@dataclass
-class LocalRuntime(Runtime):
-    create_venv: Optional[bool] = True
-    command: List[str] = field(default_factory=list)
-    python_path: Optional[str] = sys.executable
-    execution_dir: Optional[str] = None
-
-    def get_executable_command(self) -> str:
-        venv_path = Path(self.execution_dir)
-        command_str = " ".join(self.command).lstrip()
-        if self.create_venv:
-            if os.name == 'nt':
-                # Windows
-                command_exe = venv_path / "Scripts" / command_str
-            else:
-                # Unix / macOS
-                command_exe = venv_path / "bin" / command_str
-        else:
-            command_exe = command_str
-
-        # @szaher need to make sure venv is created before this check
-        # if not command_exe.exists():
-        #     raise FileNotFoundError(
-        #     f"Python executable not found in virtualenv at: {command_exe}")
-
-        return str(command_exe)
-
-
-@dataclass
-class LocalTrainJob(TrainJob):
-    job: LocalJob = None
-
-
-# Training Backends Types
-class BackendConfig(BaseModel):
-    pass
-
-# this can be simplified if we drop python3.9 support as follows
-RuntimeList = Union[List[Runtime], List[LocalRuntime]]
-TrainingRuntime = Union[Runtime, LocalRuntime]
-TrainJobLike = Union[TrainJob, LocalTrainJob]
-
-

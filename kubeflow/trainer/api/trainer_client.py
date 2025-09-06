@@ -13,25 +13,21 @@
 # limitations under the License.
 
 import logging
-from typing import Dict, Optional, Union, Set, List
+from typing import Optional, Union, Iterator
 
-from kubeflow.trainer.backends.kubernetes.k8s import KubernetesBackend
-from kubeflow.trainer.backends.local.local_process import LocalProcessBackend
 from kubeflow.trainer.constants import constants
 from kubeflow.trainer.types import types
+from kubeflow.trainer.backends.kubernetes.backend import KubernetesBackend
 from kubeflow.trainer.backends.kubernetes.types import KubernetesBackendConfig
-from kubeflow.trainer.backends.local.types import LocalProcessBackendConfig
 
 
 logger = logging.getLogger(__name__)
 
-BackendCfg = Union[KubernetesBackendConfig, LocalProcessBackendConfig]
-
 
 class TrainerClient:
-
-    def __init__( self,
-            backend_config: Optional[BackendCfg] = KubernetesBackendConfig()
+    def __init__(
+        self,
+        backend_config: KubernetesBackendConfig = KubernetesBackendConfig(),
     ):
         """Initialize a Kubeflow Trainer client.
 
@@ -39,144 +35,186 @@ class TrainerClient:
             backend_config: Backend configuration. Either KubernetesBackendConfig or
                             LocalProcessBackendConfig, or None to use the backend's
                             default config class. Defaults to KubernetesBackendConfig.
+
+        Raises:
+            ValueError: Invalid backend configuration.
+
         """
         # initialize training backend
-        self.__backend = None
         if isinstance(backend_config, KubernetesBackendConfig):
-            self.__backend = KubernetesBackend(backend_config)
-        elif isinstance(backend_config, LocalProcessBackendConfig):
-            self.__backend = LocalProcessBackend(backend_config)
+            self.backend = KubernetesBackend(backend_config)
         else:
             raise ValueError("Invalid backend config '{}'".format(backend_config))
 
+    def list_runtimes(self) -> list[types.Runtime]:
+        """List of the available runtimes.
 
-    def list_runtimes(self) -> types.RuntimeList:
-        """List of the available Runtimes.
+        Returns:
+            A list of available training runtimes. If no runtimes exist, an empty list is returned.
 
-            Returns:
-                List[Runtime]: List of available training runtimes.
-                    If no runtimes exist, an empty list is returned.
-
-            Raises:
-                TimeoutError: Timeout to list Runtimes.
-                RuntimeError: Failed to list Runtimes.
+        Raises:
+            TimeoutError: Timeout to list runtimes.
+            RuntimeError: Failed to list runtimes.
         """
-        return self.__backend.list_runtimes()
+        return self.backend.list_runtimes()
 
-    def get_runtime(self, name: str) -> types.TrainingRuntime:
-        """Get the Runtime object
+    def get_runtime(self, name: str) -> types.Runtime:
+        """Get the runtime object
         Args:
             name: Name of the runtime.
-            Returns:
-                types.TrainingRuntime: Runtime object.
-            """
-        return self.__backend.get_runtime(name=name)
-
-    def list_jobs(self, runtime: Optional[types.Runtime] = None) -> List[types.TrainJobLike]:
-        """List of all TrainJobs.
-
-            Returns:
-                List[TrainJob]: List of created TrainJobs.
-                    If no TrainJob exist, an empty list is returned.
-
-            Raises:
-                TimeoutError: Timeout to list TrainJobs.
-                RuntimeError: Failed to list TrainJobs.
-        """
-        return self.__backend.list_jobs(runtime=runtime)
-
-    def get_job(self, name: str) -> types.TrainJob:
-        """Get the TrainJob object"""
-        return self.__backend.get_job(name=name)
-
-    def delete_job(self, name: str):
-        """Delete the TrainJob.
-
-            Args:
-                name: Name of the TrainJob.
-
-            Raises:
-                TimeoutError: Timeout to delete TrainJob.
-                RuntimeError: Failed to delete TrainJob.
-        """
-        return self.__backend.delete_job(name=name)
-
-    def get_job_logs(self,
-                     name: str,
-                     follow: Optional[bool] = False,
-                     step: str = constants.NODE,
-                     node_rank: int = 0,
-        )-> Dict[str, str]:
-        """Get the logs from TrainJob"""
-        return self.__backend.get_job_logs(name=name, follow=follow, step=step, node_rank=node_rank)
-
-    def train(self,
-              runtime: types.Runtime = None,
-              initializer: Optional[types.Initializer] = None,
-              trainer: Optional[Union[types.CustomTrainer, types.BuiltinTrainer]] = None,
-        ) -> str:
-        """
-        Create the TrainJob. You can configure these types of training task:
-        - Custom Training Task: Training with a self-contained function that encapsulates
-            the entire model training process, e.g. `CustomTrainer`.
-        - Config-driven Task with Existing Trainer: Training with a trainer that already includes
-            the post-training logic, requiring only parameter adjustments, e.g. `BuiltinTrainer`.
-        Args:
-            runtime (`types.Runtime`): Reference to one of existing Runtimes.
-            initializer (`Optional[types.Initializer]`):
-                Configuration for the dataset and model initializers.
-            trainer (`Optional[types.CustomTrainer, types.BuiltinTrainer]`):
-                Configuration for Custom Training Task or Config-driven Task with Builtin Trainer.
-        Returns:
-            str: The unique name of the TrainJob that has been generated.
-        Raises:
-            ValueError: Input arguments are invalid.
-            TimeoutError: Timeout to create TrainJobs.
-            RuntimeError: Failed to create TrainJobs.
-        """
-        return self.__backend.train(runtime=runtime, initializer=initializer, trainer=trainer)
-
-    def wait_for_job_status(
-        self,
-        name: str,
-        status: Set[str] = {constants.TRAINJOB_COMPLETE},
-        timeout: int = 600,
-        polling_interval: int = 2,
-    ) -> types.TrainJobLike:
-        """Wait for TrainJob to reach the desired status
-
-        Args:
-            name: Name of the TrainJob.
-            status: Set of expected statuses. It must be subset of Created, Running, Complete, and
-                Failed statuses.
-            timeout: How many seconds to wait until TrainJob reaches one of the expected conditions.
-            polling_interval: The polling interval in seconds to check TrainJob status.
 
         Returns:
-            TrainJob: The training job that reaches the desired status.
-
-        Raises:
-            ValueError: The input values are incorrect.
-            RuntimeError: Failed to get TrainJob or TrainJob reaches unexpected Failed status.
-            TimeoutError: Timeout to wait for TrainJob status.
+            A runtime object.
         """
-        return self.__backend.wait_for_job_status(
-            name=name, status=status, timeout=timeout,
-            polling_interval=polling_interval,
-        )
+        return self.backend.get_runtime(name=name)
 
-    def get_runtime_packages(self, runtime: types.TrainingRuntime):
-        """
-        Print the installed Python packages for the given Runtime. If Runtime has GPUs it also
+    def get_runtime_packages(self, runtime: types.Runtime):
+        """Print the installed Python packages for the given runtime. If a runtime has GPUs it also
         prints available GPUs on the single training node.
 
         Args:
-            runtime: Reference to one of existing Runtimes.
+            runtime: Reference to one of existing runtimes.
 
         Raises:
             ValueError: Input arguments are invalid.
             RuntimeError: Failed to get Runtime.
 
         """
-        return self.__backend.get_runtime_packages(runtime=runtime)
+        return self.backend.get_runtime_packages(runtime=runtime)
 
+    def train(
+        self,
+        runtime: Optional[types.Runtime] = None,
+        initializer: Optional[types.Initializer] = None,
+        trainer: Optional[Union[types.CustomTrainer, types.BuiltinTrainer]] = None,
+    ) -> str:
+        """Create a TrainJob. You can configure the TrainJob using one of these trainers:
+
+        - CustomTrainer: Runs training with a user-defined function that fully encapsulates the
+            training process.
+        - BuiltinTrainer: Uses a predefined trainer with built-in post-training logic, requiring
+            only parameter configuration.
+
+        Args:
+            runtime: Optional reference to one of the existing runtimes. Defaults to the
+                torch-distributed runtime if not provided.
+            initializer: Optional configuration for the dataset and model initializers.
+            trainer: Optional configuration for a CustomTrainer or BuiltinTrainer. If not specified,
+                the TrainJob will use the runtime's default values.
+
+        Returns:
+            The unique name of the TrainJob that has been generated.
+
+        Raises:
+            ValueError: Input arguments are invalid.
+            TimeoutError: Timeout to create TrainJobs.
+            RuntimeError: Failed to create TrainJobs.
+        """
+        return self.backend.train(runtime=runtime, initializer=initializer, trainer=trainer)
+
+    def list_jobs(self, runtime: Optional[types.Runtime] = None) -> list[types.TrainJob]:
+        """List of the created TrainJobs. If a runtime is specified, only TrainJobs associated with
+        that runtime are returned.
+
+        Args:
+            runtime: Reference to one of the existing runtimes.
+
+        Returns:
+            List of created TrainJobs. If no TrainJob exist, an empty list is returned.
+
+        Raises:
+            TimeoutError: Timeout to list TrainJobs.
+            RuntimeError: Failed to list TrainJobs.
+        """
+        return self.backend.list_jobs(runtime=runtime)
+
+    def get_job(self, name: str) -> types.TrainJob:
+        """Get the TrainJob object
+
+        Args:
+            name: Name of the TrainJob.
+
+        Returns:
+            A TrainJob object.
+
+        Raises:
+            TimeoutError: Timeout to get a TrainJob.
+            RuntimeError: Failed to get a TrainJob.
+        """
+
+        return self.backend.get_job(name=name)
+
+    def get_job_logs(
+        self,
+        name: str,
+        step: str = constants.NODE + "-0",
+        follow: Optional[bool] = False,
+    ) -> Iterator[str]:
+        """Get logs from a specific step of a TrainJob.
+
+        You can watch for the logs in realtime as follows:
+        ```python
+        from kubeflow.trainer import TrainerClient
+
+        for logline in TrainerClient().get_job_logs(name="s8d44aa4fb6d", follow=True):
+            print(logline)
+        ```
+
+        Args:
+            name: Name of the TrainJob.
+            step: Step of the TrainJob to collect logs from, like dataset-initializer or node-0.
+            follow: Whether to stream logs in realtime as they are produced.
+
+        Returns:
+            Iterator of log lines.
+
+
+        Raises:
+            TimeoutError: Timeout to get a TrainJob.
+            RuntimeError: Failed to get a TrainJob.
+        """
+        return self.backend.get_job_logs(name=name, follow=follow, step=step)
+
+    def wait_for_job_status(
+        self,
+        name: str,
+        status: set[str] = {constants.TRAINJOB_COMPLETE},
+        timeout: int = 600,
+        polling_interval: int = 2,
+    ) -> types.TrainJob:
+        """Wait for a TrainJob to reach a desired status.
+
+        Args:
+            name: Name of the TrainJob.
+            status: Expected statuses. Must be a subset of Created, Running, Complete, and
+                Failed statuses.
+            timeout: Maximum number of seconds to wait for the TrainJob to reach one of the
+                expected statuses.
+            polling_interval: The polling interval in seconds to check TrainJob status.
+
+        Returns:
+            A TrainJob object that reaches the desired status.
+
+        Raises:
+            ValueError: The input values are incorrect.
+            RuntimeError: Failed to get TrainJob or TrainJob reaches unexpected Failed status.
+            TimeoutError: Timeout to wait for TrainJob status.
+        """
+        return self.backend.wait_for_job_status(
+            name=name,
+            status=status,
+            timeout=timeout,
+            polling_interval=polling_interval,
+        )
+
+    def delete_job(self, name: str):
+        """Delete the TrainJob.
+
+        Args:
+            name: Name of the TrainJob.
+
+        Raises:
+            TimeoutError: Timeout to delete TrainJob.
+            RuntimeError: Failed to delete TrainJob.
+        """
+        return self.backend.delete_job(name=name)
