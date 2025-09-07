@@ -13,10 +13,10 @@ from kubeflow.trainer.types import types
 
 
 def get_runtime_trainer(
-        venv_dir: str,
-        python_bin: str,
-        framework: str,
-        ml_policy: models.TrainerV1alpha1MLPolicy,
+    venv_dir: str,
+    python_bin: str,
+    framework: str,
+    ml_policy: models.TrainerV1alpha1MLPolicy,
 ) -> types.RuntimeTrainer:
     """
     Get the RuntimeTrainer object.
@@ -59,11 +59,7 @@ def get_dependencies_command(python_bin, pip_bin: str, pip_index_urls: str, pack
     }
     t = Template(local_exec_constants.DEPENDENCIES_SCRIPT)
     result = t.substitute(**mapping)
-    return (
-        'bash',
-        '-c',
-        result
-    )
+    return ("bash", "-c", result)
 
 
 def get_local_devices(resources: dict[str, str]) -> (str, int):
@@ -82,11 +78,11 @@ def get_local_devices(resources: dict[str, str]) -> (str, int):
 
 
 def get_command_using_train_func(
-        runtime: types.Runtime,
-        train_func: Callable,
-        train_func_parameters: Optional[Dict[str, Any]],
-        venv_dir: str,
-        train_job_name: str,
+    runtime: types.Runtime,
+    train_func: Callable,
+    train_func_parameters: Optional[Dict[str, Any]],
+    venv_dir: str,
+    train_job_name: str,
 ) -> tuple:
     """
     Get the Trainer container command from the given training function and parameters.
@@ -106,8 +102,7 @@ def get_command_using_train_func(
 
     # Extract the file name where the function is defined and move it the venv directory.
     func_file = Path(venv_dir) / "{}-{}".format(
-        train_job_name,
-        os.path.basename(inspect.getfile(train_func))
+        train_job_name, os.path.basename(inspect.getfile(train_func))
     )
 
     # Function might be defined in some indented scope (e.g. in another function).
@@ -137,7 +132,7 @@ def get_command_using_train_func(
     }
     command = t.safe_substitute(**mapping)
 
-    return 'bash', '-c', command
+    return "bash", "-c", command
 
 
 def get_cleanup_command(venv_dir: str) -> tuple:
@@ -145,4 +140,4 @@ def get_cleanup_command(venv_dir: str) -> tuple:
     t = Template(local_exec_constants.LOCAL_EXEC_JOB_CLEANUP_SCRIPT)
     cleanup_command = t.substitute(**mapping)
 
-    return 'bash', '-c', cleanup_command
+    return "bash", "-c", cleanup_command

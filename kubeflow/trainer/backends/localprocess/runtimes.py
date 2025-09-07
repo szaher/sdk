@@ -14,13 +14,13 @@
 
 from kubeflow_trainer_api.models.trainer_v1alpha1_ml_policy import TrainerV1alpha1MLPolicy
 from kubeflow_trainer_api.models.trainer_v1alpha1_torch_ml_policy_source import (
-    TrainerV1alpha1TorchMLPolicySource
+    TrainerV1alpha1TorchMLPolicySource,
 )
 from kubeflow_trainer_api.models.trainer_v1alpha1_torch_elastic_policy import (
-    TrainerV1alpha1TorchElasticPolicy
+    TrainerV1alpha1TorchElasticPolicy,
 )
 from kubeflow_trainer_api.models.io_k8s_apimachinery_pkg_util_intstr_int_or_string import (
-    IoK8sApimachineryPkgUtilIntstrIntOrString
+    IoK8sApimachineryPkgUtilIntstrIntOrString,
 )
 from kubeflow.trainer.types import types as base_types
 from kubeflow.trainer.constants import constants
@@ -36,7 +36,7 @@ local_runtimes = [
                 num_nodes=1,
                 device=constants.UNKNOWN,
                 device_count=constants.UNKNOWN,
-            )
+            ),
         ),
         ml_policy=TrainerV1alpha1MLPolicy(
             torch=TrainerV1alpha1TorchMLPolicySource(
@@ -45,6 +45,6 @@ local_runtimes = [
                 ),
                 numProcPerNode=IoK8sApimachineryPkgUtilIntstrIntOrString(1),
             )
-        )
+        ),
     )
 ]
