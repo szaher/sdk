@@ -29,8 +29,9 @@ from kubeflow.trainer.backends.localprocess.types import (
     LocalProcessBackendConfig,
     LocalBackendJobs,
     LocalBackendStep,
+    LocalRuntime,
 )
-from kubeflow.trainer.backends.localprocess.runtimes import local_runtimes
+from kubeflow.trainer.backends.localprocess.constants import local_runtimes
 from kubeflow.trainer.backends.localprocess.job import LocalJob
 from kubeflow.trainer.backends.localprocess import utils as local_utils
 
@@ -127,7 +128,12 @@ class LocalProcessBackend(ExecutionBackend):
             deps_job.start()
             # make sure training doesn't start before dependencies installation finish
             training_dependencies.append(deps_job)
-            self.__register_job(train_job_name, "deps", deps_job)
+            self.__register_job(
+                train_job_name=train_job_name,
+                step_name="deps",
+                job=deps_job,
+                runtime=local_runtime,
+            )
 
         if training_command:
             train_job = LocalJob(
@@ -141,7 +147,12 @@ class LocalProcessBackend(ExecutionBackend):
             train_job.start()
             # ask cleanup job to wait for training to be completed.
             cleanup_dependencies.append(train_job)
-            self.__register_job(train_job_name, "train", train_job)
+            self.__register_job(
+                train_job_name=train_job_name,
+                step_name="train",
+                job=train_job,
+                runtime=local_runtime,
+            )
 
             # if cleanup is requested. The virtualenv dir will be deleted.
             if self.cfg.cleanup:
@@ -155,25 +166,33 @@ class LocalProcessBackend(ExecutionBackend):
                     dependencies=cleanup_dependencies,
                 )
                 cleanup_job.start()
-                self.__register_job(train_job_name, "cleanup", cleanup_job)
+                self.__register_job(
+                    train_job_name=train_job_name,
+                    step_name="cleanup",
+                    job=cleanup_job,
+                    runtime=local_runtime,
+                )
 
         return train_job_name
 
     def list_jobs(self, runtime: Optional[types.Runtime] = None) -> List[types.TrainJob]:
-        result = [
-            types.TrainJob(
-                name=j.name,
-                creation_timestamp=j.created,
-                runtime=runtime,
-                num_nodes=1,
-                steps=[
-                    types.Step(name=s.step_name, pod_name=s.step_name, status=s.job.status)
-                    for s in j.steps
-                ],
-            )
-            for j in self.__local_jobs
-        ]
+        result = []
 
+        for _job in self.__local_jobs:
+            if runtime and _job.runtime.runtime.name != runtime.name:
+                continue
+            result.append(
+                types.TrainJob(
+                    name=_job.name,
+                    creation_timestamp=_job.created,
+                    runtime=runtime,
+                    num_nodes=1,
+                    steps=[
+                        types.Step(name=s.step_name, pod_name=s.step_name, status=s.job.status)
+                        for s in _job.steps
+                    ],
+                )
+            )
         return result
 
     def get_job(self, name: str) -> Optional[types.TrainJob]:
@@ -182,16 +201,16 @@ class LocalProcessBackend(ExecutionBackend):
             raise ValueError("No TrainJob with name '%s'" % name)
 
         # check and set the correct job status to match `TrainerClient` supported statuses
-        status = self.__get_job_status(_job[0])
+        status = self.__get_job_status(_job)
 
         return types.TrainJob(
-            name=_job[0].name,
-            creation_timestamp=_job[0].created,
+            name=_job.name,
+            creation_timestamp=_job.created,
             steps=[
                 types.Step(name=_step.step_name, pod_name=_step.step_name, status=_step.job.status)
-                for _step in _job[0].steps
+                for _step in _job.steps
             ],
-            runtime=None,
+            runtime=_job.runtime.runtime,
             num_nodes=1,
             status=status,
         )
@@ -216,17 +235,6 @@ class LocalProcessBackend(ExecutionBackend):
             # (adjust args if stream_logs has different signature)
             yield from _step.job.logs(follow=follow)
 
-    def delete_job(self, name: str):
-        # find job first.
-        _job = next((j for j in self.__local_jobs if j.name == name), None)
-        if _job is None:
-            raise ValueError("No TrainJob with name '%s'" % name)
-
-        # cancel all nested step jobs in target job
-        _ = [step.job.cancel() for step in _job.steps]
-        # remove the job from the list of jobs
-        self.__local_jobs.remove(_job)
-
     def wait_for_job_status(
         self,
         name: str,
@@ -244,6 +252,17 @@ class LocalProcessBackend(ExecutionBackend):
             if _step.status in [constants.TRAINJOB_RUNNING, constants.TRAINJOB_CREATED]:
                 _step.job.join(timeout=timeout)
         return self.get_job(name)
+
+    def delete_job(self, name: str):
+        # find job first.
+        _job = next((j for j in self.__local_jobs if j.name == name), None)
+        if _job is None:
+            raise ValueError("No TrainJob with name '%s'" % name)
+
+        # cancel all nested step jobs in target job
+        _ = [step.job.cancel() for step in _job.steps]
+        # remove the job from the list of jobs
+        self.__local_jobs.remove(_job)
 
     def __setup_runtime(self, train_job_name):
         target_dir = tempfile.mkdtemp(prefix=f"{train_job_name}-")
@@ -276,10 +295,16 @@ class LocalProcessBackend(ExecutionBackend):
 
         return status
 
-    def __register_job(self, train_job_name, step_name, job):
+    def __register_job(
+        self,
+        train_job_name: str,
+        step_name: str,
+        job: LocalJob,
+        runtime: LocalRuntime = None,
+    ):
         _job = [j for j in self.__local_jobs if j.name == train_job_name]
         if not _job:
-            _job = LocalBackendJobs(name=train_job_name, created=datetime.now())
+            _job = LocalBackendJobs(name=train_job_name, runtime=runtime, created=datetime.now())
             self.__local_jobs.append(_job)
         else:
             _job = _job[0]

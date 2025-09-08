@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import textwrap
 from kubeflow_trainer_api.models.trainer_v1alpha1_ml_policy import TrainerV1alpha1MLPolicy
 from kubeflow_trainer_api.models.trainer_v1alpha1_torch_ml_policy_source import (
     TrainerV1alpha1TorchMLPolicySource,
@@ -25,6 +26,7 @@ from kubeflow_trainer_api.models.io_k8s_apimachinery_pkg_util_intstr_int_or_stri
 from kubeflow.trainer.types import types as base_types
 from kubeflow.trainer.constants import constants
 from kubeflow.trainer.backends.localprocess import types
+
 
 local_runtimes = [
     types.LocalRuntime(
@@ -48,3 +50,32 @@ local_runtimes = [
         ),
     )
 ]
+
+# The exec script to embed training function into container command.
+DEPENDENCIES_SCRIPT = textwrap.dedent(
+    """
+        $PYTHON_BIN -m ensurepip --upgrade --default-pip
+        PIP_DISABLE_PIP_VERSION_CHECK=1 $PIP_BIN install --quiet \
+        --no-warn-script-location $PIP_INDEX $PACKAGE_STR
+    """
+)
+
+# activate virtualenv, then run the entrypoint from the virtualenv bin
+LOCAL_EXEC_JOB_SCRIPT = textwrap.dedent(
+    """
+    source $PYENV_LOCATION/bin/activate
+    $ENTRYPOINT "$FUNC_FILE" "$PARAMETERS"
+    """
+)
+
+TORCH_COMMAND = "torchrun"
+
+# default command, will run from within the virtualenv
+DEFAULT_COMMAND = "python"
+
+# remove virtualenv after training is completed.
+LOCAL_EXEC_JOB_CLEANUP_SCRIPT = textwrap.dedent(
+    """
+    rm -rf $PYENV_LOCATION
+    """
+)

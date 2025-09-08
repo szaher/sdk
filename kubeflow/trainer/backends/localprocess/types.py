@@ -48,6 +48,7 @@ class LocalBackendStep(BaseModel):
 
 class LocalBackendJobs(BaseModel):
     steps: Optional[List[LocalBackendStep]] = []
+    runtime: Optional[LocalRuntime] = None
     name: str
     created: typing.Optional[datetime] = None
     completed: typing.Optional[datetime] = None

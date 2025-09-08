@@ -7,8 +7,7 @@ from typing import List, Callable, Optional, Dict, Any
 
 from kubeflow_trainer_api import models
 
-from kubeflow.trainer.constants import constants
-from kubeflow.trainer.constants import local_exec_constants
+from kubeflow.trainer.backends.localprocess import constants as local_exec_constants
 from kubeflow.trainer.types import types
 
 
@@ -38,9 +37,6 @@ def get_runtime_trainer(
     if ml_policy.torch:
         _c = [os.path.join(venv_bin_dir, local_exec_constants.TORCH_COMMAND)]
         trainer.set_command(tuple(_c))
-    elif ml_policy.mpi:
-        # mpi isn't supported yet
-        trainer.set_command(tuple(default_cmd))
     else:
         trainer.set_command(tuple(default_cmd))
 
@@ -60,21 +56,6 @@ def get_dependencies_command(python_bin, pip_bin: str, pip_index_urls: str, pack
     t = Template(local_exec_constants.DEPENDENCIES_SCRIPT)
     result = t.substitute(**mapping)
     return ("bash", "-c", result)
-
-
-def get_local_devices(resources: dict[str, str]) -> (str, int):
-    device, device_count = constants.UNKNOWN, 0
-
-    if constants.GPU_LABEL in resources.items():
-        device = constants.GPU_LABEL.split("/")[1]
-        device_count = resources[constants.GPU_LABEL]
-    elif constants.TPU_LABEL in resources.items():
-        device = constants.TPU_LABEL.split("/")[1]
-        device_count = resources[constants.TPU_LABEL]
-    elif constants.MPS_LABEL in resources.items():
-        device = constants.MPS_LABEL.split("/")[1]
-        device_count = resources[constants.MPS_LABEL]
-    return device, device_count
 
 
 def get_command_using_train_func(
