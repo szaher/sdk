@@ -223,9 +223,9 @@ class LocalProcessBackend(ExecutionBackend):
             raise ValueError("No TrainJob with name '%s'" % name)
 
         # cancel all nested step jobs in target job
-        _ = [step.job.cancel() for step in _job[0].steps]
+        _ = [step.job.cancel() for step in _job.steps]
         # remove the job from the list of jobs
-        self.__local_jobs.remove(_job[0])
+        self.__local_jobs.remove(_job)
 
     def wait_for_job_status(
         self,
