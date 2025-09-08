@@ -33,20 +33,17 @@ class LocalJob(threading.Thread):
         env: Dict[str, str] = None,
         dependencies: List = None,
     ):
-        """Create a LocalJob. Create a local subprocess with threading to allow users
-        to create background jobs.
-        :param name: The name of the job.
-        :type name: str
-        :param command: The command to run.
-        :type command: str
-        :param execution_dir: The execution directory.
-        :type execution_dir: str
-        :param debug: If true, run in debug mode.
-        :type debug: bool
-        :param env: Environment variables.
-        :type env: Dict[str, str]
-        :param dependencies: List of dependencies.
-        :type dependencies: List[str]
+        """Creates a LocalJob.
+
+        Creates a local subprocess with threading to allow users to create background jobs.
+
+        Args:
+            name (str): The name of the job.
+            command (str): The command to run.
+            execution_dir (str): The execution directory.
+            debug (bool, optional): If true, run in debug mode. Defaults to False.
+            env (Dict[str, str], optional): Environment variables. Defaults to None.
+            dependencies (List[str], optional): List of dependencies. Defaults to None.
         """
         super().__init__()
         self.name = name
