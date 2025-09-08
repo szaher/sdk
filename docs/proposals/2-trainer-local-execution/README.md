@@ -2,21 +2,21 @@
 
 ## Summary
 
-This KEP proposes the introduction of a local execution mode for the Kubeflow Trainer SDK, allowing machine learning (ML) engineers to test and experiment with their models locally before submitting them to a kubernetes based infrastructure.
-The feature will enable ML engineers to use Subprocess, Podman, Docker or other container runtimes to create isolated environments for training jobs, reducing the cost and time spent running experiments on expensive cloud resources.
+This KEP proposes the introduction of a local execution mode for the Kubeflow Trainer SDK, allowing AI Practitioners to test and experiment with their models locally before submitting them to a kubernetes based infrastructure.
+The feature will enable AI Practitioners to use Subprocess, Podman, Docker or other container runtimes to create isolated environments for training jobs, reducing the cost and time spent running experiments on expensive cloud resources.
 This local execution mode will allow for rapid prototyping, debugging, and validation of training jobs.
 
 ## Motivation
 
 Currently, Kubeflow’s Trainer SDK requires jobs to be executed on a Kubernetes cluster.
 This setup can incur significant costs and time delays, especially for model experiments that are in the early stages.
-ML engineers often want to experiment locally before scaling their models to a full cloud-based infrastructure.
+AI Practitioners often want to experiment locally before scaling their models to a full cloud-based infrastructure.
 The proposed local execution mode will allow engineers to quickly test their models in isolated containers or virtualenvs via subprocess, facilitating a faster and more efficient workflow.
 
 ### Goals
 - Allow users to run training jobs on their local machines using container runtimes or subprocess.
 - Rework current Kubeflow Trainer SDK to implement Training Backends with Kubernetes Backend as default.
-- Implement Local Training Backends that integrates seamlessly with the Kubeflow SDK, supporting both single-node and multi-node training processes.
+- Implement Local Execution Backends that integrates seamlessly with the Kubeflow SDK, supporting both single-node and multi-node training processes.
 - Provide an implementation that supports PyTorch, with the potential to extend to other ML frameworks or runtimes.
 - Ensure compatibility with existing Kubeflow Trainer SDK features and user interfaces.
 
@@ -34,13 +34,13 @@ The local execution mode will allow users to run training jobs in container runt
 ### User Stories (Optional)
 
 #### Story 1
-As an ML engineer, I want to run my model locally using Podman/Docker containers so that I can test my training job without incurring the costs of running a Kubernetes cluster.
+As an AI Practitioner, I want to run my model locally using Podman/Docker containers so that I can test my training job without incurring the costs of running a Kubernetes cluster.
 
 #### Story 2
-As an ML engineer, I want to initialize datasets and models within Podman/Docker containers, so that I can streamline my local training environment.
+As an AI Practitioner, I want to initialize datasets and models within Podman/Docker containers, so that I can streamline my local training environment.
 
 ### Notes/Constraints/Caveats
-- The local execution mode will initially support Subprocess, Podman, Docker and Apple Container.
+- Local execution mode will first support Subprocess, with future plans to explore Podman, Docker, and Apple Container.
 - The subprocess implementation will be restricted to single node.
 - The local execution mode will support only pytorch runtime initially.
 - Resource limitations on memory, cpu and gpu is not fully supported locally and might not be supported if the training backend doesn't expose apis to support it.
@@ -53,9 +53,9 @@ As an ML engineer, I want to initialize datasets and models within Podman/Docker
 
 ## Design Details
 
-The local execution mode will be implemented using a new `LocalProcessBackend`, `PodmanBackend`, `DockerBackend` which will allow users to execute training jobs using containers. The client will utilize container runtime capabilities to create isolated environments, including volumes and networks, to manage the training lifecycle. It will also allow for easy dataset and model initialization.
+The local execution mode will be implemented using a new `LocalProcessBackend`, `PodmanBackend`, `DockerBackend` which will allow users to execute training jobs using containers and virtual environment isolation. The client will utilize container runtime capabilities to create isolated environments, including volumes and networks, to manage the training lifecycle. It will also allow for easy dataset and model initialization.
 
-- Different training backends will need to implement the same interface from the `TrainingBackend` abstract class so `TrainerClient` can initialize and load the backend.
+- Different training backends will need to implement the same interface from the `ExecutionBackend` abstract class so `TrainerClient` can initialize and load the backend.
 - The Podman/Docker client will connect to a local container environment, create shared volumes, and initialize datasets and models as needed.
 - The **DockerBackend** will manage Docker containers, networks, and volumes using runtime definitions specified by the user.
 - The **PodmanBackend** will manage Podman containers, networks, and volumes using runtime definitions specified by the user.
