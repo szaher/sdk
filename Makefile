@@ -51,7 +51,7 @@ ruff: ## Install Ruff
 	@uv run ruff --help &> /dev/null || uv tool install ruff
 
 .PHONY: verify
-verify: uv uv-venv ruff  ## install all required tools
+verify: install-dev  ## install all required tools
 	@uv lock --check
 	@uv sync
 	@uv run ruff check --show-fixes --output-format=github .
@@ -70,10 +70,18 @@ uv-venv:
 .PHONY: test-python
 test-python: uv-venv
 	@uv sync
-	@uv run coverage run --source=kubeflow.trainer.backends.kubernetes.backend,kubeflow.trainer.utils.utils -m pytest ./kubeflow/trainer/backends/kubernetes/backend_test.py
+	@uv run coverage run --source=kubeflow.trainer.backends.kubernetes.backend,kubeflow.trainer.utils.utils -m pytest ./kubeflow/trainer/backends/kubernetes/backend_test.py ./kubeflow/trainer/utils/utils_test.py
 	@uv run coverage report -m kubeflow/trainer/backends/kubernetes/backend.py kubeflow/trainer/utils/utils.py
 ifeq ($(report),xml)
 	@uv run coverage xml
 else
 	@uv run coverage html
 endif
+
+
+.PHONY: install-dev
+install-dev: uv uv-venv ruff ## Install uv, create .venv, sync deps; DEV=1 to include dev group; EXTRAS=comma,list for extras
+	@echo "Using virtual environment at: $(VENV_DIR)"
+	@echo "Syncing dependencies with uv..."
+	@uv sync
+	@echo "Environment is ready."

@@ -788,7 +788,6 @@ def test_get_runtime_packages(kubernetes_backend, test_case):
             },
             expected_error=ValueError,
         ),
-
     ],
 )
 def test_train(kubernetes_backend, test_case):
