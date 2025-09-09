@@ -29,7 +29,6 @@ class LocalJob(threading.Thread):
         name,
         command: Union[List, Tuple[str], str],
         execution_dir: str = None,
-        debug: bool = False,
         env: Dict[str, str] = None,
         dependencies: List = None,
     ):
@@ -41,7 +40,6 @@ class LocalJob(threading.Thread):
             name (str): The name of the job.
             command (str): The command to run.
             execution_dir (str): The execution directory.
-            debug (bool, optional): If true, run in debug mode. Defaults to False.
             env (Dict[str, str], optional): Environment variables. Defaults to None.
             dependencies (List[str], optional): List of dependencies. Defaults to None.
         """
@@ -60,7 +58,6 @@ class LocalJob(threading.Thread):
         self._end_time = None
         self.env = env or {}
         self.dependencies = dependencies or []
-        self.debug = debug
         self.execution_dir = execution_dir or os.getcwd()
 
     def run(self):
@@ -74,9 +71,8 @@ class LocalJob(threading.Thread):
         current_dir = os.getcwd()
         try:
             self._start_time = datetime.now()
-            if self.debug:
-                _c = " ".join(self.command)
-                logger.debug(f"[{self.name}] Started at {self._start_time} with command: \n {_c}")
+            _c = " ".join(self.command)
+            logger.debug(f"[{self.name}] Started at {self._start_time} with command: \n {_c}")
 
             # change working directory to venv before executing script
             os.chdir(self.execution_dir)
@@ -124,8 +120,7 @@ class LocalJob(threading.Thread):
                 constants.TRAINJOB_COMPLETE if self._success else (constants.TRAINJOB_FAILED)
             )
             self._stdout += msg
-            if self.debug:
-                logger.debug(self._stdout)
+            logger.debug("Job output: ", self._stdout)
 
         except Exception as e:
             with self._lock:

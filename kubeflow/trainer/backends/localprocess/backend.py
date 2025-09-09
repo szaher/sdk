@@ -78,8 +78,7 @@ class LocalProcessBackend(ExecutionBackend):
         # setup runtime
         target_dir, python_bin, pip_bin = self.__setup_runtime(train_job_name=train_job_name)
 
-        if self.cfg.debug:
-            logger.info("operating in {}".format(target_dir))
+        logger.debug("operating in {}".format(target_dir))
 
         local_runtime = self.__get_full_runtime(runtime)
 
@@ -121,7 +120,6 @@ class LocalProcessBackend(ExecutionBackend):
             deps_job = LocalJob(
                 name="{}-deps".format(train_job_name),
                 command=deps_command,
-                debug=self.cfg.debug,
                 execution_dir=target_dir,
                 env=trainer.env,
             )
@@ -139,7 +137,6 @@ class LocalProcessBackend(ExecutionBackend):
             train_job = LocalJob(
                 name="{}-train".format(train_job_name),
                 command=training_command,
-                debug=self.cfg.debug,
                 execution_dir=target_dir,
                 env=trainer.env,
                 dependencies=training_dependencies,
@@ -160,7 +157,6 @@ class LocalProcessBackend(ExecutionBackend):
                 cleanup_job = LocalJob(
                     name="{}-cleanup".format(train_job_name),
                     command=cleanup_command,
-                    debug=self.cfg.debug,
                     execution_dir=target_dir,
                     env=trainer.env,
                     dependencies=cleanup_dependencies,
