@@ -14,10 +14,10 @@
 
 import pytest
 
-from kubeflow.trainer.utils import utils
 from kubeflow.trainer.constants import constants
+from kubeflow.trainer.test.common import FAILED, SUCCESS, TestCase
 from kubeflow.trainer.types import types
-from kubeflow.trainer.test.common import TestCase, SUCCESS, FAILED
+from kubeflow.trainer.utils import utils
 
 
 def _build_runtime() -> types.Runtime:

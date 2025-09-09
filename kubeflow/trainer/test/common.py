@@ -3,7 +3,6 @@
 from dataclasses import dataclass, field
 from typing import Any, Optional, Type
 
-
 # Common status constants
 SUCCESS = "success"
 FAILED = "Failed"

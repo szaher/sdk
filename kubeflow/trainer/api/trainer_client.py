@@ -12,14 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from collections.abc import Iterator
 import logging
-from typing import Optional, Union, Iterator
+from typing import Optional, Union
 
-from kubeflow.trainer.constants import constants
-from kubeflow.trainer.types import types
 from kubeflow.trainer.backends.kubernetes.backend import KubernetesBackend
 from kubeflow.trainer.backends.kubernetes.types import KubernetesBackendConfig
-
+from kubeflow.trainer.constants import constants
+from kubeflow.trainer.types import types
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +44,7 @@ class TrainerClient:
         if isinstance(backend_config, KubernetesBackendConfig):
             self.backend = KubernetesBackend(backend_config)
         else:
-            raise ValueError("Invalid backend config '{}'".format(backend_config))
+            raise ValueError(f"Invalid backend config '{backend_config}'")
 
     def list_runtimes(self) -> list[types.Runtime]:
         """List of the available runtimes.
