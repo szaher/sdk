@@ -48,14 +48,14 @@ uv: ## Install UV
 
 .PHONY: ruff
 ruff: ## Install Ruff
-	@uvx ruff --help &> /dev/null || uv tool install ruff
+	@uv run ruff --help &> /dev/null || uv tool install ruff
 
 .PHONY: verify
 verify: uv uv-venv ruff  ## install all required tools
 	@uv lock --check
-	@uv pip install -e ".[dev]"  ## make sure to install the correct dev tool versions
+	@uv sync
 	@uv run ruff check --show-fixes --output-format=github .
-	@uv run ruff format --check .
+	@uv run ruff format --check kubeflow
 
 .PHONY: uv-venv
 uv-venv:
