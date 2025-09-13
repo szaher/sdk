@@ -1,5 +1,7 @@
 import inspect
 import os
+import shutil
+
 import textwrap
 from pathlib import Path
 from string import Template
@@ -8,12 +10,12 @@ from typing import List, Callable, Optional, Dict, Any
 from kubeflow_trainer_api import models
 
 from kubeflow.trainer.backends.localprocess import constants as local_exec_constants
+from kubeflow.trainer.constants import constants
 from kubeflow.trainer.types import types
 
 
 def get_runtime_trainer(
     venv_dir: str,
-    python_bin: str,
     framework: str,
     ml_policy: models.TrainerV1alpha1MLPolicy,
 ) -> types.RuntimeTrainer:
@@ -43,19 +45,22 @@ def get_runtime_trainer(
     return trainer
 
 
-def get_dependencies_command(python_bin, pip_bin: str, pip_index_urls: str, packages: List[str]):
+def get_dependencies_command(pip_index_urls: str, packages: List[str], quiet: bool = True) -> str:
     options = [f"--index-url {pip_index_urls[0]}"]
     options.extend(f"--extra-index-url {extra_index_url}" for extra_index_url in pip_index_urls[1:])
 
+    """
+           PIP_DISABLE_PIP_VERSION_CHECK=1 pip install $QUIET $AS_USER \
+       --no-warn-script-location $PIP_INDEX $PACKAGE_STR
+       """
     mapping = {
-        "PYTHON_BIN": python_bin,
-        "PIP_BIN": pip_bin,
+        "QUIET": "--quiet" if quiet else "",
         "PIP_INDEX": " ".join(options),
         "PACKAGE_STR": " ".join(packages),
     }
     t = Template(local_exec_constants.DEPENDENCIES_SCRIPT)
     result = t.substitute(**mapping)
-    return ("bash", "-c", result)
+    return result
 
 
 def get_command_using_train_func(
@@ -64,7 +69,7 @@ def get_command_using_train_func(
     train_func_parameters: Optional[Dict[str, Any]],
     venv_dir: str,
     train_job_name: str,
-) -> tuple:
+) -> str:
     """
     Get the Trainer container command from the given training function and parameters.
     """
@@ -82,9 +87,7 @@ def get_command_using_train_func(
     func_code = inspect.getsource(train_func)
 
     # Extract the file name where the function is defined and move it the venv directory.
-    func_file = Path(venv_dir) / "{}-{}".format(
-        train_job_name, os.path.basename(inspect.getfile(train_func))
-    )
+    func_file = Path(venv_dir) / local_exec_constants.LOCAL_EXEC_FILENAME.format(train_job_name)
 
     # Function might be defined in some indented scope (e.g. in another function).
     # We need to dedent the function code.
@@ -104,21 +107,74 @@ def get_command_using_train_func(
         f.write(func_code)
     f.close()
 
-    t = Template(local_exec_constants.LOCAL_EXEC_JOB_SCRIPT)
+    t = Template(local_exec_constants.LOCAL_EXEC_ENTRYPOINT)
     mapping = {
-        "PARAMETERS": "",
+        "PARAMETERS": "",  ## Torch Parameters if any
         "PYENV_LOCATION": venv_dir,
         "ENTRYPOINT": " ".join(runtime.trainer.command),
         "FUNC_FILE": func_file,
     }
-    command = t.safe_substitute(**mapping)
+    entrypoint = t.safe_substitute(**mapping)
 
-    return "bash", "-c", command
+    return entrypoint
 
 
-def get_cleanup_command(venv_dir: str) -> tuple:
-    mapping = {"PYENV_LOCATION": venv_dir}
+def get_cleanup_script(venv_dir: str, cleanup: bool = True) -> str:
+    script = "\n"
+    if not cleanup:
+        return script
+
     t = Template(local_exec_constants.LOCAL_EXEC_JOB_CLEANUP_SCRIPT)
-    cleanup_command = t.substitute(**mapping)
+    mapping = {
+        "PYENV_LOCATION": venv_dir,
+    }
+    return t.substitute(**mapping)
 
-    return "bash", "-c", cleanup_command
+
+def get_training_job_command(
+    train_job_name: str,
+    venv_dir: str,
+    trainer: types.CustomTrainer,
+    runtime: types.Runtime,
+    cleanup: bool = True,
+) -> tuple:
+    # use local-exec train job template
+    t = Template(local_exec_constants.LOCAL_EXEC_JOB_TEMPLATE)
+    # find os python binary to create venv
+    python_bin = shutil.which("python")
+    if not python_bin:
+        python_bin = shutil.which("python3")
+    if not python_bin:
+        raise ValueError("No python executable found")
+
+    # workout if dependencies needs to be installed
+    dependency_script = "\n"
+    if trainer.packages_to_install:
+        dependency_script = get_dependencies_command(
+            pip_index_urls=trainer.pip_index_urls
+            if trainer.pip_index_urls
+            else constants.DEFAULT_PIP_INDEX_URLS,
+            packages=trainer.packages_to_install,
+            quiet=False,
+        )
+
+    entrypoint = get_command_using_train_func(
+        venv_dir=venv_dir,
+        runtime=runtime,
+        train_func=trainer.func,
+        train_func_parameters=trainer.func_args,
+        train_job_name=train_job_name,
+    )
+
+    cleanup_script = get_cleanup_script(cleanup=cleanup, venv_dir=venv_dir)
+
+    mapping = {
+        "OS_PYTHON_BIN": python_bin,
+        "PYENV_LOCATION": venv_dir,
+        "DEPENDENCIES_SCRIPT": dependency_script,
+        "ENTRYPOINT": entrypoint,
+        "CLEANUP_SCRIPT": cleanup_script,
+    }
+
+    command = t.safe_substitute(**mapping)
+    return "bash", "-c", command

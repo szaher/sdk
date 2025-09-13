@@ -51,19 +51,21 @@ local_runtimes = [
     )
 ]
 
+
+# Create venv script
+
+
 # The exec script to embed training function into container command.
 DEPENDENCIES_SCRIPT = textwrap.dedent(
     """
-        $PYTHON_BIN -m ensurepip --upgrade --default-pip
-        PIP_DISABLE_PIP_VERSION_CHECK=1 $PIP_BIN install --quiet \
-        --no-warn-script-location $PIP_INDEX $PACKAGE_STR
+        PIP_DISABLE_PIP_VERSION_CHECK=1 pip install $QUIET \
+    --no-warn-script-location $PIP_INDEX $PACKAGE_STR
     """
 )
 
 # activate virtualenv, then run the entrypoint from the virtualenv bin
-LOCAL_EXEC_JOB_SCRIPT = textwrap.dedent(
+LOCAL_EXEC_ENTRYPOINT = textwrap.dedent(
     """
-    source $PYENV_LOCATION/bin/activate
     $ENTRYPOINT "$FUNC_FILE" "$PARAMETERS"
     """
 )
@@ -79,3 +81,18 @@ LOCAL_EXEC_JOB_CLEANUP_SCRIPT = textwrap.dedent(
     rm -rf $PYENV_LOCATION
     """
 )
+
+
+LOCAL_EXEC_JOB_TEMPLATE = textwrap.dedent(
+    """
+    $OS_PYTHON_BIN -m venv --without-pip $PYENV_LOCATION
+    echo "Operating inside $PYENV_LOCATION"
+    source $PYENV_LOCATION/bin/activate
+    $PYENV_LOCATION/bin/python -m ensurepip --upgrade --default-pip
+    $DEPENDENCIES_SCRIPT
+    $ENTRYPOINT
+    $CLEANUP_SCRIPT
+    """
+)
+
+LOCAL_EXEC_FILENAME = "train_{}.py"

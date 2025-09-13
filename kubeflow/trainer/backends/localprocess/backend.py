@@ -12,14 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import logging
-import os
 import string
 import tempfile
 import uuid
-import venv
 import random
 from datetime import datetime
-from pathlib import Path
 from typing import List, Optional, Set, Union, Iterator
 
 from kubeflow.trainer.constants import constants
@@ -75,99 +72,47 @@ class LocalProcessBackend(ExecutionBackend):
         if isinstance(trainer, types.CustomTrainer):
             trainer: types.CustomTrainer = trainer
 
-        # setup runtime
-        target_dir, python_bin, pip_bin = self.__setup_runtime(train_job_name=train_job_name)
+        # create temp dir
+        venv_dir = tempfile.mkdtemp(prefix=train_job_name)
 
-        logger.debug("operating in {}".format(target_dir))
+        logger.debug("operating in {}".format(venv_dir))
 
         local_runtime = self.__get_full_runtime(runtime)
 
         runtime.trainer = local_utils.get_runtime_trainer(
-            venv_dir=target_dir,
-            python_bin=str(python_bin),
+            venv_dir=venv_dir,
             framework=runtime.trainer.framework,
             ml_policy=local_runtime.ml_policy,
         )
 
         training_command = []
-        deps_command = []
 
         if isinstance(trainer, types.CustomTrainer):
             if runtime.trainer.trainer_type != types.TrainerType.CUSTOM_TRAINER:
                 raise ValueError(f"CustomTrainer can't be used with {runtime.name} runtime")
-            if trainer.packages_to_install:
-                deps_command = local_utils.get_dependencies_command(
-                    python_bin=python_bin,
-                    pip_bin=str(pip_bin),
-                    pip_index_urls=trainer.pip_index_urls
-                    if trainer.pip_index_urls
-                    else constants.DEFAULT_PIP_INDEX_URLS,
-                    packages=trainer.packages_to_install,
-                )
-            training_command = local_utils.get_command_using_train_func(
+            training_command = local_utils.get_training_job_command(
+                trainer=trainer,
                 runtime=runtime,
-                train_func=trainer.func,
-                train_func_parameters=trainer.func_args,
-                venv_dir=target_dir,
                 train_job_name=train_job_name,
+                venv_dir=venv_dir,
+                cleanup=self.cfg.cleanup,
             )
-        # make sure we wait for dependencies to be installed and runtime to become ready
-        training_dependencies = []
-        # wait for all jobs to be completed then cleanup venv and other resources if needed.
-        cleanup_dependencies = []
-
-        if deps_command:
-            deps_job = LocalJob(
-                name="{}-deps".format(train_job_name),
-                command=deps_command,
-                execution_dir=target_dir,
-                env=trainer.env,
-            )
-            deps_job.start()
-            # make sure training doesn't start before dependencies installation finish
-            training_dependencies.append(deps_job)
-            self.__register_job(
-                train_job_name=train_job_name,
-                step_name="deps",
-                job=deps_job,
-                runtime=local_runtime,
-            )
-
-        if training_command:
-            train_job = LocalJob(
-                name="{}-train".format(train_job_name),
-                command=training_command,
-                execution_dir=target_dir,
-                env=trainer.env,
-                dependencies=training_dependencies,
-            )
-            train_job.start()
-            # ask cleanup job to wait for training to be completed.
-            cleanup_dependencies.append(train_job)
-            self.__register_job(
-                train_job_name=train_job_name,
-                step_name="train",
-                job=train_job,
-                runtime=local_runtime,
-            )
-
-            # if cleanup is requested. The virtualenv dir will be deleted.
-            if self.cfg.cleanup:
-                cleanup_command = local_utils.get_cleanup_command(venv_dir=target_dir)
-                cleanup_job = LocalJob(
-                    name="{}-cleanup".format(train_job_name),
-                    command=cleanup_command,
-                    execution_dir=target_dir,
-                    env=trainer.env,
-                    dependencies=cleanup_dependencies,
-                )
-                cleanup_job.start()
-                self.__register_job(
-                    train_job_name=train_job_name,
-                    step_name="cleanup",
-                    job=cleanup_job,
-                    runtime=local_runtime,
-                )
+        else:
+            raise ValueError("Trainer type not supported")
+        train_job = LocalJob(
+            name="{}-train".format(train_job_name),
+            command=training_command,
+            execution_dir=venv_dir,
+            env=trainer.env,
+            dependencies=[],
+        )
+        self.__register_job(
+            train_job_name=train_job_name,
+            step_name="train",
+            job=train_job,
+            runtime=local_runtime,
+        )
+        train_job.start()
 
         return train_job_name
 
@@ -260,22 +205,13 @@ class LocalProcessBackend(ExecutionBackend):
         # remove the job from the list of jobs
         self.__local_jobs.remove(_job)
 
-    def __setup_runtime(self, train_job_name):
-        target_dir = tempfile.mkdtemp(prefix=f"{train_job_name}-")
-        venv.create(env_dir=target_dir, with_pip=False)
-
-        python_bin = Path(target_dir) / "bin" / "python"
-        if not os.path.exists(python_bin):
-            raise RuntimeError(f"Python executable not found at {python_bin}")
-        pip_bin = Path(target_dir) / "bin" / "pip"
-
-        return target_dir, python_bin, pip_bin
-
     def __get_full_runtime(self, runtime: types.Runtime):
-        target_runtime = [rt for rt in local_runtimes if rt.runtime.name == runtime.name]
+        target_runtime = next(
+            (rt for rt in local_runtimes if rt.runtime.name == runtime.name), None
+        )
         if not target_runtime:
             raise ValueError(f"Runtime '{runtime.name}' not found.")
-        return target_runtime[0]
+        return target_runtime
 
     def __get_job_status(self, job: LocalBackendJobs) -> str:
         statuses = [_step.job.status for _step in job.steps]
