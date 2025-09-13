@@ -48,11 +48,11 @@ class LocalProcessBackend(ExecutionBackend):
         return [local_runtime.runtime for local_runtime in local_runtimes]
 
     def get_runtime(self, name: str) -> Optional[types.Runtime]:
-        _runtime = [rt.runtime for rt in local_runtimes if rt.runtime.name == name]
+        _runtime = next((rt.runtime for rt in local_runtimes if rt.runtime.name == name), None)
         if not _runtime:
             raise ValueError(f"Runtime '{name}' not found.")
 
-        return _runtime[0]
+        return _runtime
 
     def get_runtime_packages(self, runtime: types.Runtime):
         raise NotImplementedError("get_runtime_packages is not supported by LocalProcessBackend")
@@ -63,9 +63,7 @@ class LocalProcessBackend(ExecutionBackend):
         initializer: Optional[types.Initializer] = None,
         trainer: Optional[Union[types.CustomTrainer, types.BuiltinTrainer]] = None,
     ) -> str:
-        train_job_name = "kft-{}".format(
-            random.choice(string.ascii_lowercase) + uuid.uuid4().hex[:11],
-        )
+        train_job_name = random.choice(string.ascii_lowercase) + uuid.uuid4().hex[:11]
         # Build the env
         if not trainer:
             raise ValueError("Cannot create TrainJob without a Trainer")
