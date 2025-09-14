@@ -1,42 +1,147 @@
 import inspect
 import os
 import shutil
-
+import re
 import textwrap
 from pathlib import Path
 from string import Template
-from typing import List, Callable, Optional, Dict, Any
-
-from kubeflow_trainer_api import models
+from typing import List, Callable, Optional, Dict, Any, Tuple, Set
 
 from kubeflow.trainer.backends.localprocess import constants as local_exec_constants
 from kubeflow.trainer.constants import constants
 from kubeflow.trainer.types import types
+from kubeflow.trainer.backends.localprocess.types import LocalRuntimeTrainer
+
+
+def _extract_name(requirement: str) -> str:
+    """
+    Extract the base distribution name from a requirement string without external deps.
+
+    Supports common PEP 508 patterns:
+      - 'package'
+      - 'package[extra1,extra2]'
+      - 'package==1.2.3', 'package>=1.0', 'package~=1.4', etc.
+      - 'package @ https://...'
+      - markers after ';' are irrelevant for name extraction.
+
+    Returns the *raw* (un-normalized) name as it appears.
+    Raises ValueError if a name cannot be parsed.
+    """
+    if requirement is None:
+        raise ValueError("Requirement string cannot be None")
+    s = requirement.strip()
+    if not s:
+        raise ValueError("Empty requirement string")
+
+    m = local_exec_constants.PYTHON_PACKAGE_NAME_RE.match(s)
+    if not m:
+        raise ValueError(f"Could not parse package name from requirement: {requirement!r}")
+    return m.group(1)
+
+
+def _canonicalize_name(name: str) -> str:
+    """
+    PEP 503-style normalization: case-insensitive, and collapse runs of -, _, . into '-'.
+    """
+    return re.sub(r"[-_.]+", "-", name).lower()
+
+
+def get_install_packages(
+    runtime_packages: List[str],
+    trainer_packages: Optional[List[str]] = None,
+) -> List[str]:
+    """
+    Merge two requirement lists into a single list of strings.
+
+    Rules implemented:
+    1) If a package appears in trainer_packages, it overwrites the one in runtime_packages.
+       We keep the *trainer string verbatim* (specifier, markers, extras, spacing).
+    2) Case-insensitive matching of package names (PEP 503-style normalization).
+    3) Output is a list of strings.
+    4) If trainer_packages contains the same dependency multiple times (case-insensitive),
+       raise ValueError.
+    5) If runtime_packages contains duplicates, the last one among *runtime* wins there
+       (no error), but any trainer entry still overwrites it. Runtime packages shouldn't
+        have any duplicates.
+    6) Ordering: keep runtime-only packages in their original order (emitting only their
+       last occurrence), then append all trainer packages in their original order.
+    """
+    if not trainer_packages:
+        return runtime_packages
+
+    # --- Parse + normalize runtime ---
+    runtime_parsed: List[Tuple[str, str]] = []  # (orig, canonical_name)
+    last_runtime_index_by_name: Dict[str, int] = {}
+
+    for i, orig in enumerate(runtime_packages):
+        raw_name = _extract_name(orig)
+        canon = _canonicalize_name(raw_name)
+        runtime_parsed.append((orig, canon))
+        last_runtime_index_by_name[canon] = i  # last occurrence index wins among runtime
+
+    # --- Parse + validate trainer (detect duplicates) ---
+    trainer_parsed: List[Tuple[str, str]] = []
+    seen_trainer: Set[str] = set()
+    for orig in trainer_packages:
+        raw_name = _extract_name(orig)
+        canon = _canonicalize_name(raw_name)
+        if canon in seen_trainer:
+            raise ValueError(
+                f"Duplicate dependency in trainer_packages: '{raw_name}' (canonical: '{canon}')"
+            )
+        seen_trainer.add(canon)
+        trainer_parsed.append((orig, canon))
+
+    trainer_names: Set[str] = {canon for _, canon in trainer_parsed}
+
+    # --- Build merged list respecting order semantics ---
+    merged: List[str] = []
+
+    # 1) Runtime-only packages (only emit the last occurrence for each name)
+    emitted_runtime_names: Set[str] = set()
+    for idx, (orig, canon) in enumerate(runtime_parsed):
+        if canon in trainer_names:
+            continue  # overwritten by trainer
+        if last_runtime_index_by_name[canon] == idx and canon not in emitted_runtime_names:
+            merged.append(orig)
+            emitted_runtime_names.add(canon)
+
+    # 2) Trainer packages (overwrite and preserve trainer's exact strings, original order)
+    for orig, _ in trainer_parsed:
+        merged.append(orig)
+
+    return merged
 
 
 def get_runtime_trainer(
+    runtime_name: str,
     venv_dir: str,
     framework: str,
-    ml_policy: models.TrainerV1alpha1MLPolicy,
-) -> types.RuntimeTrainer:
+) -> LocalRuntimeTrainer:
     """
-    Get the RuntimeTrainer object.
+    Get the LocalRuntimeTrainer object.
     """
+    local_runtime = next(
+        (rt for rt in local_exec_constants.local_runtimes if rt.name == runtime_name), None
+    )
+    if not local_runtime:
+        raise ValueError(f"Runtime {runtime_name} not found")
 
-    trainer = types.RuntimeTrainer(
+    trainer = LocalRuntimeTrainer(
         trainer_type=(
             types.TrainerType.BUILTIN_TRAINER
             if framework == types.TORCH_TUNE
             else types.TrainerType.CUSTOM_TRAINER
         ),
         framework=framework,
+        packages=local_runtime.trainer.packages,
     )
 
     # set command to run from venv
     venv_bin_dir = str(Path(venv_dir) / "bin")
     default_cmd = [str(Path(venv_bin_dir) / local_exec_constants.DEFAULT_COMMAND)]
     # Set the Trainer entrypoint.
-    if ml_policy.torch:
+    if framework == local_exec_constants.TORCH_FRAMEWORK_TYPE:
         _c = [os.path.join(venv_bin_dir, local_exec_constants.TORCH_COMMAND)]
         trainer.set_command(tuple(_c))
     else:
@@ -45,7 +150,18 @@ def get_runtime_trainer(
     return trainer
 
 
-def get_dependencies_command(pip_index_urls: str, packages: List[str], quiet: bool = True) -> str:
+def get_dependencies_command(
+    runtime_packages: List[str],
+    pip_index_urls: str,
+    trainer_packages: List[str],
+    quiet: bool = True,
+) -> str:
+    # resolve runtime dependencies and trainer dependencies.
+    packages = get_install_packages(
+        runtime_packages=runtime_packages,
+        trainer_packages=trainer_packages,
+    )
+
     options = [f"--index-url {pip_index_urls[0]}"]
     options.extend(f"--extra-index-url {extra_index_url}" for extra_index_url in pip_index_urls[1:])
 
@@ -56,7 +172,7 @@ def get_dependencies_command(pip_index_urls: str, packages: List[str], quiet: bo
     mapping = {
         "QUIET": "--quiet" if quiet else "",
         "PIP_INDEX": " ".join(options),
-        "PACKAGE_STR": " ".join(packages),
+        "PACKAGE_STR": '"{}"'.format('" "'.join(packages)),  # quote deps
     }
     t = Template(local_exec_constants.DEPENDENCIES_SCRIPT)
     result = t.substitute(**mapping)
@@ -148,13 +264,18 @@ def get_training_job_command(
         raise ValueError("No python executable found")
 
     # workout if dependencies needs to be installed
+    if isinstance(runtime.trainer, LocalRuntimeTrainer):
+        runtime_trainer: LocalRuntimeTrainer = runtime.trainer
+    else:
+        raise ValueError("Invalid Runtime Trainer type: {type(runtime.trainer)}")
     dependency_script = "\n"
     if trainer.packages_to_install:
         dependency_script = get_dependencies_command(
             pip_index_urls=trainer.pip_index_urls
             if trainer.pip_index_urls
             else constants.DEFAULT_PIP_INDEX_URLS,
-            packages=trainer.packages_to_install,
+            runtime_packages=runtime_trainer.packages,
+            trainer_packages=trainer.packages_to_install,
             quiet=False,
         )
 
@@ -177,4 +298,5 @@ def get_training_job_command(
     }
 
     command = t.safe_substitute(**mapping)
+
     return "bash", "-c", command

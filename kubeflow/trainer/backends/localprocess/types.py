@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import typing
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import List, Optional
 
@@ -25,6 +26,11 @@ from kubeflow.trainer.types import types
 
 class LocalProcessBackendConfig(BaseModel):
     cleanup: bool = True
+
+
+@dataclass
+class LocalRuntimeTrainer(types.RuntimeTrainer):
+    packages: List[str] = field(default_factory=list)
 
 
 class LocalRuntime(BaseModel):
@@ -45,7 +51,7 @@ class LocalBackendStep(BaseModel):
 
 class LocalBackendJobs(BaseModel):
     steps: Optional[List[LocalBackendStep]] = []
-    runtime: Optional[LocalRuntime] = None
+    runtime: Optional[types.Runtime] = None
     name: str
     created: typing.Optional[datetime] = None
     completed: typing.Optional[datetime] = None

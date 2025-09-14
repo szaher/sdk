@@ -26,7 +26,7 @@ from kubeflow.trainer.backends.localprocess.types import (
     LocalProcessBackendConfig,
     LocalBackendJobs,
     LocalBackendStep,
-    LocalRuntime,
+    LocalRuntimeTrainer,
 )
 from kubeflow.trainer.backends.localprocess.constants import local_runtimes
 from kubeflow.trainer.backends.localprocess.job import LocalJob
@@ -45,17 +45,21 @@ class LocalProcessBackend(ExecutionBackend):
         self.cfg = cfg
 
     def list_runtimes(self) -> List[types.Runtime]:
-        return [local_runtime.runtime for local_runtime in local_runtimes]
+        return local_runtimes
 
     def get_runtime(self, name: str) -> Optional[types.Runtime]:
-        _runtime = next((rt.runtime for rt in local_runtimes if rt.runtime.name == name), None)
-        if not _runtime:
+        runtime = next((rt for rt in local_runtimes if rt.name == name), None)
+        if not runtime:
             raise ValueError(f"Runtime '{name}' not found.")
 
-        return _runtime
+        return runtime
 
     def get_runtime_packages(self, runtime: types.Runtime):
-        raise NotImplementedError("get_runtime_packages is not supported by LocalProcessBackend")
+        if isinstance(runtime.trainer, LocalRuntimeTrainer):
+            return runtime.trainer.packages
+        else:
+            logger.debug("Trainer type isn't supported by LocalProcessBackend")
+            return []
 
     def train(
         self,
@@ -75,15 +79,11 @@ class LocalProcessBackend(ExecutionBackend):
 
         logger.debug("operating in {}".format(venv_dir))
 
-        local_runtime = self.__get_full_runtime(runtime)
-
         runtime.trainer = local_utils.get_runtime_trainer(
+            runtime_name=runtime.name,
             venv_dir=venv_dir,
             framework=runtime.trainer.framework,
-            ml_policy=local_runtime.ml_policy,
         )
-
-        training_command = []
 
         if isinstance(trainer, types.CustomTrainer):
             if runtime.trainer.trainer_type != types.TrainerType.CUSTOM_TRAINER:
@@ -97,6 +97,7 @@ class LocalProcessBackend(ExecutionBackend):
             )
         else:
             raise ValueError("Trainer type not supported")
+
         train_job = LocalJob(
             name="{}-train".format(train_job_name),
             command=training_command,
@@ -108,7 +109,7 @@ class LocalProcessBackend(ExecutionBackend):
             train_job_name=train_job_name,
             step_name="train",
             job=train_job,
-            runtime=local_runtime,
+            runtime=runtime,
         )
         train_job.start()
 
@@ -118,7 +119,7 @@ class LocalProcessBackend(ExecutionBackend):
         result = []
 
         for _job in self.__local_jobs:
-            if runtime and _job.runtime.runtime.name != runtime.name:
+            if runtime and _job.runtime.name != runtime.name:
                 continue
             result.append(
                 types.TrainJob(
@@ -149,7 +150,7 @@ class LocalProcessBackend(ExecutionBackend):
                 types.Step(name=_step.step_name, pod_name=_step.step_name, status=_step.job.status)
                 for _step in _job.steps
             ],
-            runtime=_job.runtime.runtime,
+            runtime=_job.runtime,
             num_nodes=1,
             status=status,
         )
@@ -188,7 +189,7 @@ class LocalProcessBackend(ExecutionBackend):
             raise ValueError("No TrainJob with name '%s'" % name)
         # find a better implementation for this
         for _step in _job.steps:
-            if _step.status in [constants.TRAINJOB_RUNNING, constants.TRAINJOB_CREATED]:
+            if _step.job.status in [constants.TRAINJOB_RUNNING, constants.TRAINJOB_CREATED]:
                 _step.job.join(timeout=timeout)
         return self.get_job(name)
 
@@ -202,14 +203,6 @@ class LocalProcessBackend(ExecutionBackend):
         _ = [step.job.cancel() for step in _job.steps]
         # remove the job from the list of jobs
         self.__local_jobs.remove(_job)
-
-    def __get_full_runtime(self, runtime: types.Runtime):
-        target_runtime = next(
-            (rt for rt in local_runtimes if rt.runtime.name == runtime.name), None
-        )
-        if not target_runtime:
-            raise ValueError(f"Runtime '{runtime.name}' not found.")
-        return target_runtime
 
     def __get_job_status(self, job: LocalBackendJobs) -> str:
         statuses = [_step.job.status for _step in job.steps]
@@ -230,7 +223,7 @@ class LocalProcessBackend(ExecutionBackend):
         train_job_name: str,
         step_name: str,
         job: LocalJob,
-        runtime: LocalRuntime = None,
+        runtime: types.Runtime = None,
     ):
         _job = [j for j in self.__local_jobs if j.name == train_job_name]
         if not _job:

@@ -13,40 +13,23 @@
 # limitations under the License.
 
 import textwrap
-from kubeflow_trainer_api.models.trainer_v1alpha1_ml_policy import TrainerV1alpha1MLPolicy
-from kubeflow_trainer_api.models.trainer_v1alpha1_torch_ml_policy_source import (
-    TrainerV1alpha1TorchMLPolicySource,
-)
-from kubeflow_trainer_api.models.trainer_v1alpha1_torch_elastic_policy import (
-    TrainerV1alpha1TorchElasticPolicy,
-)
-from kubeflow_trainer_api.models.io_k8s_apimachinery_pkg_util_intstr_int_or_string import (
-    IoK8sApimachineryPkgUtilIntstrIntOrString,
-)
+import re
 from kubeflow.trainer.types import types as base_types
 from kubeflow.trainer.constants import constants
 from kubeflow.trainer.backends.localprocess import types
 
+TORCH_FRAMEWORK_TYPE = "torch"
 
 local_runtimes = [
-    types.LocalRuntime(
-        runtime=base_types.Runtime(
-            name=constants.TORCH_RUNTIME,
-            trainer=base_types.RuntimeTrainer(
-                trainer_type=base_types.TrainerType.CUSTOM_TRAINER,
-                framework="torch",
-                num_nodes=1,
-                device=constants.UNKNOWN,
-                device_count=constants.UNKNOWN,
-            ),
-        ),
-        ml_policy=TrainerV1alpha1MLPolicy(
-            torch=TrainerV1alpha1TorchMLPolicySource(
-                elasticPolicy=TrainerV1alpha1TorchElasticPolicy(
-                    maxNodes=1, minNodes=1, maxRestarts=1
-                ),
-                numProcPerNode=IoK8sApimachineryPkgUtilIntstrIntOrString(1),
-            )
+    base_types.Runtime(
+        name=constants.TORCH_RUNTIME,
+        trainer=types.LocalRuntimeTrainer(
+            trainer_type=base_types.TrainerType.CUSTOM_TRAINER,
+            framework=TORCH_FRAMEWORK_TYPE,
+            num_nodes=1,
+            device_count=constants.UNKNOWN,
+            device=constants.UNKNOWN,
+            packages=["torch"],
         ),
     )
 ]
@@ -85,6 +68,7 @@ LOCAL_EXEC_JOB_CLEANUP_SCRIPT = textwrap.dedent(
 
 LOCAL_EXEC_JOB_TEMPLATE = textwrap.dedent(
     """
+    set -e
     $OS_PYTHON_BIN -m venv --without-pip $PYENV_LOCATION
     echo "Operating inside $PYENV_LOCATION"
     source $PYENV_LOCATION/bin/activate
@@ -96,3 +80,5 @@ LOCAL_EXEC_JOB_TEMPLATE = textwrap.dedent(
 )
 
 LOCAL_EXEC_FILENAME = "train_{}.py"
+
+PYTHON_PACKAGE_NAME_RE = re.compile(r"^\s*([A-Za-z0-9][A-Za-z0-9._-]*)")
