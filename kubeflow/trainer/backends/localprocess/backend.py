@@ -26,7 +26,6 @@ from kubeflow.trainer.backends.localprocess.types import (
     LocalProcessBackendConfig,
     LocalBackendJobs,
     LocalBackendStep,
-    LocalRuntimeTrainer,
 )
 from kubeflow.trainer.backends.localprocess.constants import local_runtimes
 from kubeflow.trainer.backends.localprocess.job import LocalJob
@@ -62,11 +61,11 @@ class LocalProcessBackend(ExecutionBackend):
         return runtime
 
     def get_runtime_packages(self, runtime: types.Runtime):
-        if isinstance(runtime.trainer, LocalRuntimeTrainer):
-            return runtime.trainer.packages
-        else:
-            logger.debug("Trainer type isn't supported by LocalProcessBackend")
-            return []
+        runtime = next((rt for rt in local_runtimes if rt.name == runtime.name), None)
+        if not runtime:
+            raise ValueError(f"Runtime '{runtime.name}' not found.")
+
+        return runtime.trainer.packages
 
     def train(
         self,
@@ -96,7 +95,7 @@ class LocalProcessBackend(ExecutionBackend):
             runtime=runtime,
             train_job_name=train_job_name,
             venv_dir=venv_dir,
-            cleanup=self.cfg.cleanup_venv,
+            cleanup_venv=self.cfg.cleanup_venv,
         )
 
         # create subprocess object

@@ -128,11 +128,7 @@ def get_runtime_trainer(
         raise ValueError(f"Runtime {runtime_name} not found")
 
     trainer = LocalRuntimeTrainer(
-        trainer_type=(
-            types.TrainerType.BUILTIN_TRAINER
-            if framework == types.TORCH_TUNE
-            else types.TrainerType.CUSTOM_TRAINER
-        ),
+        trainer_type=types.TrainerType.CUSTOM_TRAINER,
         framework=framework,
         packages=local_runtime.trainer.packages,
     )
@@ -235,9 +231,9 @@ def get_command_using_train_func(
     return entrypoint
 
 
-def get_cleanup_script(venv_dir: str, cleanup: bool = True) -> str:
+def get_cleanup_venv_script(venv_dir: str, cleanup_venv: bool = True) -> str:
     script = "\n"
-    if not cleanup:
+    if not cleanup_venv:
         return script
 
     t = Template(local_exec_constants.LOCAL_EXEC_JOB_CLEANUP_SCRIPT)
@@ -252,7 +248,7 @@ def get_training_job_command(
     venv_dir: str,
     trainer: types.CustomTrainer,
     runtime: types.Runtime,
-    cleanup: bool = True,
+    cleanup_venv: bool = True,
 ) -> tuple:
     # use local-exec train job template
     t = Template(local_exec_constants.LOCAL_EXEC_JOB_TEMPLATE)
@@ -287,7 +283,7 @@ def get_training_job_command(
         train_job_name=train_job_name,
     )
 
-    cleanup_script = get_cleanup_script(cleanup=cleanup, venv_dir=venv_dir)
+    cleanup_script = get_cleanup_venv_script(cleanup_venv=cleanup_venv, venv_dir=venv_dir)
 
     mapping = {
         "OS_PYTHON_BIN": python_bin,
