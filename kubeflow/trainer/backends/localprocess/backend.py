@@ -161,9 +161,8 @@ class LocalProcessBackend(ExecutionBackend):
     def get_job_logs(
         self,
         name: str,
-        follow: Optional[bool] = False,
         step: str = constants.NODE + "-0",
-        node_rank: int = 0,
+        follow: Optional[bool] = False,
     ) -> Iterator[str]:
         _job = [j for j in self.__local_jobs if j.name == name]
         if not _job:
