@@ -25,7 +25,7 @@ from kubeflow.trainer.types import types
 
 
 class LocalProcessBackendConfig(BaseModel):
-    cleanup: bool = True
+    cleanup_venv: bool = True
 
 
 @dataclass

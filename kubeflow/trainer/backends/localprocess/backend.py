@@ -47,7 +47,7 @@ class LocalProcessBackend(ExecutionBackend):
     def list_runtimes(self) -> List[types.Runtime]:
         return local_runtimes
 
-    def get_runtime(self, name: str) -> Optional[types.Runtime]:
+    def get_runtime(self, name: str) -> types.Runtime:
         runtime = next((rt for rt in local_runtimes if rt.name == name), None)
         if not runtime:
             raise ValueError(f"Runtime '{name}' not found.")
@@ -67,16 +67,14 @@ class LocalProcessBackend(ExecutionBackend):
         initializer: Optional[types.Initializer] = None,
         trainer: Optional[Union[types.CustomTrainer, types.BuiltinTrainer]] = None,
     ) -> str:
+        # set train job name
         train_job_name = random.choice(string.ascii_lowercase) + uuid.uuid4().hex[:11]
-        # Build the env
-        if not trainer:
-            raise ValueError("Cannot create TrainJob without a Trainer")
-        if isinstance(trainer, types.CustomTrainer):
-            trainer: types.CustomTrainer = trainer
+        # localprocess backend only supports CustomTrainer
+        if not isinstance(trainer, types.CustomTrainer):
+            raise ValueError("CustomTrainer must be set with LocalProcessBackend")
 
         # create temp dir
         venv_dir = tempfile.mkdtemp(prefix=train_job_name)
-
         logger.debug("operating in {}".format(venv_dir))
 
         runtime.trainer = local_utils.get_runtime_trainer(
@@ -85,19 +83,16 @@ class LocalProcessBackend(ExecutionBackend):
             framework=runtime.trainer.framework,
         )
 
-        if isinstance(trainer, types.CustomTrainer):
-            if runtime.trainer.trainer_type != types.TrainerType.CUSTOM_TRAINER:
-                raise ValueError(f"CustomTrainer can't be used with {runtime.name} runtime")
-            training_command = local_utils.get_training_job_command(
-                trainer=trainer,
-                runtime=runtime,
-                train_job_name=train_job_name,
-                venv_dir=venv_dir,
-                cleanup=self.cfg.cleanup,
-            )
-        else:
-            raise ValueError("Trainer type not supported")
+        # build training job command
+        training_command = local_utils.get_training_job_command(
+            trainer=trainer,
+            runtime=runtime,
+            train_job_name=train_job_name,
+            venv_dir=venv_dir,
+            cleanup=self.cfg.cleanup_venv,
+        )
 
+        # create subprocess object
         train_job = LocalJob(
             name="{}-train".format(train_job_name),
             command=training_command,
@@ -105,12 +100,14 @@ class LocalProcessBackend(ExecutionBackend):
             env=trainer.env,
             dependencies=[],
         )
+
         self.__register_job(
             train_job_name=train_job_name,
             step_name="train",
             job=train_job,
             runtime=runtime,
         )
+        # start the job.
         train_job.start()
 
         return train_job_name
