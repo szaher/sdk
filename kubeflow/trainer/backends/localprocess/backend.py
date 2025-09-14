@@ -45,10 +45,17 @@ class LocalProcessBackend(ExecutionBackend):
         self.cfg = cfg
 
     def list_runtimes(self) -> List[types.Runtime]:
-        return local_runtimes
+        return [self.__convert_local_runtime_to_runtime(local_runtime=rt) for rt in local_runtimes]
 
     def get_runtime(self, name: str) -> types.Runtime:
-        runtime = next((rt for rt in local_runtimes if rt.name == name), None)
+        runtime = next(
+            (
+                self.__convert_local_runtime_to_runtime(rt)
+                for rt in local_runtimes
+                if rt.name == name
+            ),
+            None,
+        )
         if not runtime:
             raise ValueError(f"Runtime '{name}' not found.")
 
@@ -234,3 +241,16 @@ class LocalProcessBackend(ExecutionBackend):
             _job.steps.append(_step)
         else:
             logger.warning("Step '{}' already registered.".format(step_name))
+
+    def __convert_local_runtime_to_runtime(self, local_runtime) -> types.Runtime:
+        return types.Runtime(
+            name=local_runtime.name,
+            trainer=types.RuntimeTrainer(
+                trainer_type=local_runtime.trainer.trainer_type,
+                framework=local_runtime.trainer.framework,
+                num_nodes=local_runtime.trainer.num_nodes,
+                device_count=local_runtime.trainer.device_count,
+                device=local_runtime.trainer.device,
+            ),
+            pretrained_model=local_runtime.pretrained_model,
+        )
