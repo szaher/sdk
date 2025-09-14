@@ -90,7 +90,7 @@ class LocalProcessBackend(ExecutionBackend):
         )
 
         # build training job command
-        training_command = local_utils.get_training_job_command(
+        training_command = local_utils.get_local_train_job_script(
             trainer=trainer,
             runtime=runtime,
             train_job_name=train_job_name,

@@ -243,7 +243,7 @@ def get_cleanup_venv_script(venv_dir: str, cleanup_venv: bool = True) -> str:
     return t.substitute(**mapping)
 
 
-def get_training_job_command(
+def get_local_train_job_script(
     train_job_name: str,
     venv_dir: str,
     trainer: types.CustomTrainer,
