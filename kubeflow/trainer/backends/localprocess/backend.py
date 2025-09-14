@@ -83,7 +83,7 @@ class LocalProcessBackend(ExecutionBackend):
         venv_dir = tempfile.mkdtemp(prefix=train_job_name)
         logger.debug("operating in {}".format(venv_dir))
 
-        runtime.trainer = local_utils.get_runtime_trainer(
+        runtime.trainer = local_utils.get_local_runtime_trainer(
             runtime_name=runtime.name,
             venv_dir=venv_dir,
             framework=runtime.trainer.framework,
@@ -97,6 +97,9 @@ class LocalProcessBackend(ExecutionBackend):
             venv_dir=venv_dir,
             cleanup_venv=self.cfg.cleanup_venv,
         )
+
+        # set the command in the runtime trainer
+        runtime.trainer.set_command(training_command)
 
         # create subprocess object
         train_job = LocalJob(

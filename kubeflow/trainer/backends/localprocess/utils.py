@@ -113,7 +113,7 @@ def get_install_packages(
     return merged
 
 
-def get_runtime_trainer(
+def get_local_runtime_trainer(
     runtime_name: str,
     venv_dir: str,
     framework: str,
