@@ -91,11 +91,10 @@ select = [
   "C4",  # flake8-comprehensions
   "SIM"  # flake8-simplify
 ]
-# E501 (line length) is delegated to the formatter
+
 ignore = [
   "B006"  # mutable-argument-default
 ]
-
 
 
 [tool.ruff.lint.isort]
