@@ -19,13 +19,9 @@ This module uses pytest and unittest.mock to test LocalProcessBackend's behavior
 across job creation, management, and lifecycle operations using local subprocess execution.
 """
 
-import random
-import string
-import tempfile
-import uuid
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Optional, Set, Type
+from typing import Any, Optional, Type
 from unittest.mock import Mock, patch
 
 import pytest
@@ -45,6 +41,7 @@ from kubeflow.trainer.types import types
 @dataclass
 class TestCase:
     """Test case configuration for parametrized tests."""
+
     name: str
     expected_status: str
     config: dict[str, Any] = field(default_factory=dict)
@@ -70,6 +67,7 @@ TEST_VENV_DIR = "/tmp/test_venv"
 # Fixtures
 # --------------------------
 
+
 @pytest.fixture
 def local_backend():
     """Provide a LocalProcessBackend instance for testing."""
@@ -80,6 +78,7 @@ def local_backend():
 # --------------------------
 # Object Creators
 # --------------------------
+
 
 def create_mock_runtime(
     name: str = TORCH_RUNTIME,
@@ -110,7 +109,7 @@ def create_mock_trainer(
         packages = ["torch", "numpy"]
     if env is None:
         env = {"ENV_VAR": "test_value"}
-    
+
     return types.CustomTrainer(
         func=lambda: print(func_name),
         func_args={"param1": "value1"},
@@ -149,7 +148,7 @@ def create_local_backend_job(
     if steps is None:
         mock_job = create_local_job()
         steps = [LocalBackendStep(step_name="train", job=mock_job)]
-    
+
     return LocalBackendJobs(
         name=name,
         runtime=runtime,
@@ -166,7 +165,7 @@ def create_train_job_type(
     """Create a mock TrainJob object for testing."""
     if runtime is None:
         runtime = create_mock_runtime()
-    
+
     return types.TrainJob(
         name=name,
         creation_timestamp=datetime.now(),
@@ -188,6 +187,7 @@ def create_train_job_type(
 # --------------------------
 # Tests
 # --------------------------
+
 
 def test_init():
     """Test LocalProcessBackend initialization."""
@@ -233,11 +233,11 @@ def test_get_runtime(local_backend, test_case):
     print("Executing test:", test_case.name)
     try:
         runtime = local_backend.get_runtime(**test_case.config)
-        
+
         assert test_case.expected_status == SUCCESS
         assert isinstance(runtime, types.Runtime)
         assert runtime.name == test_case.config["name"]
-        
+
     except Exception as e:
         assert test_case.expected_status == FAILED
         assert type(e) is test_case.expected_error
@@ -275,11 +275,11 @@ def test_get_runtime_packages(local_backend, test_case):
     print("Executing test:", test_case.name)
     try:
         packages = local_backend.get_runtime_packages(**test_case.config)
-        
+
         assert test_case.expected_status == SUCCESS
         assert isinstance(packages, list)
         assert "torch" in packages
-        
+
     except Exception as e:
         assert test_case.expected_status == FAILED
         assert type(e) is test_case.expected_error
@@ -325,36 +325,36 @@ def test_train(
 ):
     """Test train method with various scenarios."""
     print("Executing test:", test_case.name)
-    
+
     # Setup mocks
     mock_random_choice.return_value = "a"
     mock_uuid.return_value.hex = "mock-uuid-hex"
     mock_mkdtemp.return_value = TEST_VENV_DIR
-    
+
     mock_local_job = create_local_job(name="amock-uuid-h-train")
     mock_local_job_class.return_value = mock_local_job
-    
+
     mock_local_utils.get_local_runtime_trainer.return_value = Mock()
     mock_local_utils.get_local_train_job_script.return_value = ["python", "script.py"]
-    
+
     try:
         job_name = local_backend.train(**test_case.config)
-        
+
         assert test_case.expected_status == SUCCESS
         assert job_name == "amock-uuid-h"
         assert len(local_backend._LocalProcessBackend__local_jobs) == 1
-        
+
         # Verify mock calls
         mock_mkdtemp.assert_called_once()
         mock_local_utils.get_local_runtime_trainer.assert_called_once()
         mock_local_utils.get_local_train_job_script.assert_called_once()
         mock_local_job.start.assert_called_once()
-        
+
     except Exception as e:
         assert test_case.expected_status == FAILED
         assert type(e) is test_case.expected_error
         assert "CustomTrainer must be set" in str(e)
-    
+
     print("test execution complete")
 
 
@@ -382,30 +382,30 @@ def test_train(
 def test_list_jobs(local_backend, test_case):
     """Test list_jobs method with various scenarios."""
     print("Executing test:", test_case.name)
-    
+
     # Setup jobs if requested
     if test_case.config.get("setup_jobs"):
         backend_job = create_local_backend_job()
         local_backend._LocalProcessBackend__local_jobs.append(backend_job)
-    
+
     try:
         runtime_filter = test_case.config.get("runtime")
         jobs = local_backend.list_jobs(runtime=runtime_filter)
-        
+
         assert test_case.expected_status == SUCCESS
         assert isinstance(jobs, list)
-        
+
         if test_case.config.get("setup_jobs"):
             assert len(jobs) >= 1
             for job in jobs:
                 assert isinstance(job, types.TrainJob)
         else:
             assert jobs == test_case.expected_output
-            
+
     except Exception as e:
         assert test_case.expected_status == FAILED
         assert type(e) is test_case.expected_error
-    
+
     print("test execution complete")
 
 
@@ -428,12 +428,12 @@ def test_list_jobs(local_backend, test_case):
 def test_get_job(local_backend, test_case):
     """Test get_job method with various scenarios."""
     print("Executing test:", test_case.name)
-    
+
     # Setup a job if testing success case
     if test_case.expected_status == SUCCESS:
         backend_job = create_local_backend_job(name=test_case.config["name"])
         local_backend._LocalProcessBackend__local_jobs.append(backend_job)
-    
+
     try:
         with patch.object(
             local_backend,
@@ -441,16 +441,16 @@ def test_get_job(local_backend, test_case):
             return_value=constants.TRAINJOB_COMPLETE,
         ):
             job = local_backend.get_job(**test_case.config)
-        
+
         assert test_case.expected_status == SUCCESS
         assert isinstance(job, types.TrainJob)
         assert job.name == test_case.config["name"]
-        
+
     except Exception as e:
         assert test_case.expected_status == FAILED
         assert type(e) is test_case.expected_error
         assert "No TrainJob with name" in str(e)
-    
+
     print("test execution complete")
 
 
@@ -486,23 +486,23 @@ def test_get_job(local_backend, test_case):
 def test_get_job_logs(local_backend, test_case):
     """Test get_job_logs method with various scenarios."""
     print("Executing test:", test_case.name)
-    
+
     # Setup a job if testing success case
     if test_case.expected_status == SUCCESS:
         backend_job = create_local_backend_job(name=test_case.config["name"])
         local_backend._LocalProcessBackend__local_jobs.append(backend_job)
-    
+
     try:
         logs = list(local_backend.get_job_logs(**test_case.config))
-        
+
         assert test_case.expected_status == SUCCESS
         assert logs == test_case.expected_output
-        
+
     except Exception as e:
         assert test_case.expected_status == FAILED
         assert type(e) is test_case.expected_error
         assert "No TrainJob with name" in str(e)
-    
+
     print("test execution complete")
 
 
@@ -535,7 +535,7 @@ def test_get_job_logs(local_backend, test_case):
 def test_wait_for_job_status(local_backend, test_case):
     """Test wait_for_job_status method with various scenarios."""
     print("Executing test:", test_case.name)
-    
+
     # Setup a job if testing success case
     if test_case.expected_status == SUCCESS:
         mock_job = create_local_job(status=constants.TRAINJOB_RUNNING)
@@ -544,23 +544,23 @@ def test_wait_for_job_status(local_backend, test_case):
             steps=[LocalBackendStep(step_name="train", job=mock_job)],
         )
         local_backend._LocalProcessBackend__local_jobs.append(backend_job)
-    
+
     try:
         with patch.object(local_backend, "get_job") as mock_get_job:
             mock_train_job = create_train_job_type(name=test_case.config["name"])
             mock_get_job.return_value = mock_train_job
-            
+
             result = local_backend.wait_for_job_status(**test_case.config)
-            
+
             assert test_case.expected_status == SUCCESS
             assert result == mock_train_job
             mock_get_job.assert_called_once_with(test_case.config["name"])
-        
+
     except Exception as e:
         assert test_case.expected_status == FAILED
         assert type(e) is test_case.expected_error
         assert "No TrainJob with name" in str(e)
-    
+
     print("test execution complete")
 
 
@@ -583,25 +583,25 @@ def test_wait_for_job_status(local_backend, test_case):
 def test_delete_job(local_backend, test_case):
     """Test delete_job method with various scenarios."""
     print("Executing test:", test_case.name)
-    
+
     # Setup a job if testing success case
     if test_case.expected_status == SUCCESS:
         backend_job = create_local_backend_job(name=test_case.config["name"])
         local_backend._LocalProcessBackend__local_jobs.append(backend_job)
         initial_count = len(local_backend._LocalProcessBackend__local_jobs)
-    
+
     try:
         local_backend.delete_job(**test_case.config)
-        
+
         assert test_case.expected_status == SUCCESS
         # Verify job was removed
         assert len(local_backend._LocalProcessBackend__local_jobs) == initial_count - 1
-        
+
     except Exception as e:
         assert test_case.expected_status == FAILED
         assert type(e) is test_case.expected_error
         assert "No TrainJob with name" in str(e)
-    
+
     print("test execution complete")
 
 
@@ -637,36 +637,36 @@ def test_delete_job(local_backend, test_case):
 def test_get_job_status(local_backend, test_case):
     """Test private __get_job_status method with various scenarios."""
     print("Executing test:", test_case.name)
-    
+
     # Create mock steps with the specified statuses
     steps = []
     for status in test_case.config["statuses"]:
         mock_job = create_local_job(status=status)
         steps.append(LocalBackendStep(step_name=f"step-{status}", job=mock_job))
-    
+
     backend_job = create_local_backend_job(steps=steps)
-    
+
     try:
         status = local_backend._LocalProcessBackend__get_job_status(backend_job)
-        
+
         assert test_case.expected_status == SUCCESS
         assert status == test_case.expected_output
-        
+
     except Exception as e:
         assert test_case.expected_status == FAILED
         assert type(e) is test_case.expected_error
-    
+
     print("test execution complete")
 
 
 def test_register_job_scenarios(local_backend):
     """Test __register_job method with various scenarios."""
     print("Testing job registration scenarios")
-    
+
     mock_job1 = create_local_job(name="job1")
     mock_job2 = create_local_job(name="job2")
     runtime = create_mock_runtime()
-    
+
     # Test new job registration
     local_backend._LocalProcessBackend__register_job(
         train_job_name="new-job",
@@ -674,13 +674,13 @@ def test_register_job_scenarios(local_backend):
         job=mock_job1,
         runtime=runtime,
     )
-    
+
     assert len(local_backend._LocalProcessBackend__local_jobs) == 1
     registered_job = local_backend._LocalProcessBackend__local_jobs[0]
     assert registered_job.name == "new-job"
     assert len(registered_job.steps) == 1
     assert registered_job.steps[0].step_name == "train"
-    
+
     # Test adding step to existing job
     local_backend._LocalProcessBackend__register_job(
         train_job_name="new-job",
@@ -688,10 +688,10 @@ def test_register_job_scenarios(local_backend):
         job=mock_job2,
         runtime=runtime,
     )
-    
+
     assert len(local_backend._LocalProcessBackend__local_jobs) == 1
     assert len(registered_job.steps) == 2
-    
+
     # Test duplicate step warning
     with patch("kubeflow.trainer.backends.localprocess.backend.logger") as mock_logger:
         local_backend._LocalProcessBackend__register_job(
@@ -701,21 +701,21 @@ def test_register_job_scenarios(local_backend):
             runtime=runtime,
         )
         mock_logger.warning.assert_called_once_with("Step 'train' already registered.")
-    
+
     print("Job registration tests complete")
 
 
 def test_convert_local_runtime_to_runtime(local_backend):
     """Test __convert_local_runtime_to_runtime method."""
     print("Testing runtime conversion")
-    
+
     # Use the first local runtime from constants
     local_runtime = local_runtimes[0]
-    
+
     converted_runtime = local_backend._LocalProcessBackend__convert_local_runtime_to_runtime(
         local_runtime
     )
-    
+
     assert isinstance(converted_runtime, types.Runtime)
     assert converted_runtime.name == local_runtime.name
     assert converted_runtime.trainer.framework == local_runtime.trainer.framework
@@ -723,5 +723,5 @@ def test_convert_local_runtime_to_runtime(local_backend):
     assert converted_runtime.trainer.device == local_runtime.trainer.device
     assert converted_runtime.trainer.device_count == local_runtime.trainer.device_count
     assert converted_runtime.pretrained_model == local_runtime.pretrained_model
-    
+
     print("Runtime conversion test complete")
