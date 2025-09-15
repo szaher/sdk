@@ -355,8 +355,7 @@ class KubernetesBackend(ExecutionBackend):
                 )
 
                 # Stream logs incrementally.
-                for logline in log_stream:
-                    yield logline  # type:ignore
+                yield from log_stream
             else:
                 logs = self.core_api.read_namespaced_pod_log(
                     name=pod_name,
@@ -364,8 +363,7 @@ class KubernetesBackend(ExecutionBackend):
                     container=container_name,
                 )
 
-                for line in logs.splitlines():
-                    yield line
+                yield from logs.splitlines()
 
         except Exception as e:
             raise RuntimeError(
@@ -556,7 +554,12 @@ class KubernetesBackend(ExecutionBackend):
         # Update the TrainJob status from its conditions.
         if trainjob_crd.status and trainjob_crd.status.conditions:
             for c in trainjob_crd.status.conditions:
-                if c.type == constants.TRAINJOB_COMPLETE and c.status == "True" or c.type == constants.TRAINJOB_FAILED and c.status == "True":
+                if (
+                    c.type == constants.TRAINJOB_COMPLETE
+                    and c.status == "True"
+                    or c.type == constants.TRAINJOB_FAILED
+                    and c.status == "True"
+                ):
                     trainjob.status = c.type
         else:
             # The TrainJob running status is defined when all training node (e.g. Pods) are

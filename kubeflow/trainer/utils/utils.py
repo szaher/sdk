@@ -222,9 +222,12 @@ def get_trainjob_node_step(
 
     if container.env:
         for env in container.env:
-            if env.value and env.value.isdigit():
-                if env.name == constants.TORCH_ENV_NUM_PROC_PER_NODE:
-                    step.device_count = env.value
+            if (
+                env.value
+                and env.value.isdigit()
+                and env.name == constants.TORCH_ENV_NUM_PROC_PER_NODE
+            ):
+                step.device_count = env.value
 
     return step
 
