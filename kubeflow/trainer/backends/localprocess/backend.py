@@ -61,11 +61,11 @@ class LocalProcessBackend(ExecutionBackend):
         return runtime
 
     def get_runtime_packages(self, runtime: types.Runtime):
-        runtime = next((rt for rt in local_runtimes if rt.name == runtime.name), None)
-        if not runtime:
+        local_runtime = next((rt for rt in local_runtimes if rt.name == runtime.name), None)
+        if not local_runtime:
             raise ValueError(f"Runtime '{runtime.name}' not found.")
 
-        return runtime.trainer.packages
+        return local_runtime.trainer.packages
 
     def train(
         self,

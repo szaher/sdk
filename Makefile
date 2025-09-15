@@ -68,8 +68,15 @@ uv-venv:
 .PHONY: test-python
 test-python: uv-venv
 	@uv sync
-	@uv run coverage run --source=kubeflow.trainer.backends.kubernetes.backend,kubeflow.trainer.utils.utils -m pytest ./kubeflow/trainer/backends/kubernetes/backend_test.py ./kubeflow/trainer/utils/utils_test.py
-	@uv run coverage report -m kubeflow/trainer/backends/kubernetes/backend.py kubeflow/trainer/utils/utils.py
+	@echo "Discovering all test files..."
+	@TEST_FILES=$$(find ./kubeflow -name "*_test.py" -type f | tr '\n' ' '); \
+	SOURCE_FILES=$$(find ./kubeflow -name "*_test.py" -type f | sed 's/_test\.py$$/.py/' | tr '\n' ' '); \
+	SOURCE_MODULES=$$(find ./kubeflow -name "*_test.py" -type f | sed 's/_test\.py$$/.py/' | sed 's|^\./||g' | sed 's|/|.|g' | sed 's|\.py$$||g' | tr '\n' ','); \
+	SOURCE_MODULES=$$(echo $$SOURCE_MODULES | sed 's/,$$//'); \
+	echo "Running tests: $$TEST_FILES"; \
+	echo "Coverage sources: $$SOURCE_MODULES"; \
+	uv run coverage run --source=$$SOURCE_MODULES -m pytest $$TEST_FILES; \
+	uv run coverage report -m $$(echo $$SOURCE_FILES | tr ' ' '\n' | grep -E '\.(py)$$' | tr '\n' ' ')
 ifeq ($(report),xml)
 	@uv run coverage xml
 else
