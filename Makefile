@@ -53,7 +53,6 @@ ruff: ## Install Ruff
 .PHONY: verify
 verify: install-dev  ## install all required tools
 	@uv lock --check
-	@uv sync
 	@uv run ruff check --show-fixes --output-format=github .
 	@uv run ruff format --check kubeflow
 
