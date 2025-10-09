@@ -1,7 +1,10 @@
 name: Welcome new contributors
 
 on:
-  pull_request_target:
+  pull_request:
+    types:
+      - opened
+  issues:
     types:
       - opened
 
@@ -10,11 +13,28 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       pull-requests: write
+      issues: write
     steps:
       - uses: actions/first-interaction@v3
         with:
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
-          pr-message: |
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          issue_message: |
+            🎉 **Welcome to the Kubeflow SDK!** 🎉
+
+            Thanks for opening your first issue! We're happy to have you as part of our community 🚀
+
+            **Here's what happens next:**
+
+            - Our team will review your issue soon! cc @kubeflow/kubeflow-sdk-team
+            - If you'd like to contribute to this issue, check out our [Contributing Guide](https://github.com/kubeflow/sdk/blob/main/CONTRIBUTING.md) for repo-specific guidelines and the [Kubeflow Contributor Guide](https://www.kubeflow.org/docs/about/contributing/) for general community standards
+
+            **Join the community:**
+            - **Slack**: Join our [#kubeflow-ml-experience](https://www.kubeflow.org/docs/about/community/#kubeflow-slack-channels) and [#kubeflow-trainer](https://www.kubeflow.org/docs/about/community/#kubeflow-slack-channels) Slack channels
+            - **Meetings**: Attend the [Kubeflow SDK and ML Experience](https://bit.ly/kf-ml-experience) bi-weekly meetings
+
+            Feel free to ask questions in the comments if you need any help or clarification!
+            Thanks again for contributing to Kubeflow! 🙏
+          pr_message: |
             🎉 **Welcome to the Kubeflow SDK!** 🎉
 
             Thanks for opening your first PR! We're happy to have you as part of our community 🚀
