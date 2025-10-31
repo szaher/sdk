@@ -95,12 +95,16 @@ class TrainerClient:
         self,
         runtime: Optional[types.Runtime] = None,
         initializer: Optional[types.Initializer] = None,
-        trainer: Optional[Union[types.CustomTrainer, types.BuiltinTrainer]] = None,
+        trainer: Optional[
+            Union[types.CustomTrainer, types.CustomTrainerContainer, types.BuiltinTrainer]
+        ] = None,
     ) -> str:
         """Create a TrainJob. You can configure the TrainJob using one of these trainers:
 
         - CustomTrainer: Runs training with a user-defined function that fully encapsulates the
             training process.
+        - CustomTrainerContainer: Runs training with a user-defined image that fully encapsulates
+            the training process.
         - BuiltinTrainer: Uses a predefined trainer with built-in post-training logic, requiring
             only parameter configuration.
 
@@ -108,8 +112,9 @@ class TrainerClient:
             runtime: Optional reference to one of the existing runtimes. Defaults to the
                 torch-distributed runtime if not provided.
             initializer: Optional configuration for the dataset and model initializers.
-            trainer: Optional configuration for a CustomTrainer or BuiltinTrainer. If not specified,
-                the TrainJob will use the runtime's default values.
+            trainer: Optional configuration for a CustomTrainer, CustomTrainerContainer, or
+                BuiltinTrainer. If not specified, the TrainJob will use the
+                runtime's default values.
 
         Returns:
             The unique name of the TrainJob that has been generated.
