@@ -18,6 +18,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Callable, Optional, Union
 
+import kubeflow.common.constants as common_constants
 from kubeflow.trainer.constants import constants
 
 
@@ -212,8 +213,8 @@ class RuntimeTrainer:
     trainer_type: TrainerType
     framework: str
     num_nodes: int = 1  # The default value is set in the APIs.
-    device: str = constants.UNKNOWN
-    device_count: str = constants.UNKNOWN
+    device: str = common_constants.UNKNOWN
+    device_count: str = common_constants.UNKNOWN
     __command: tuple[str, ...] = field(init=False, repr=False)
 
     @property
@@ -238,20 +239,19 @@ class Step:
     name: str
     status: Optional[str]
     pod_name: str
-    device: str = constants.UNKNOWN
-    device_count: str = constants.UNKNOWN
+    device: str = common_constants.UNKNOWN
+    device_count: str = common_constants.UNKNOWN
 
 
 # Representation for the TrainJob.
-# TODO (andreyvelich): Discuss what fields users want to get.
 @dataclass
 class TrainJob:
     name: str
-    creation_timestamp: datetime
     runtime: Runtime
     steps: list[Step]
     num_nodes: int
-    status: str = constants.UNKNOWN
+    creation_timestamp: datetime
+    status: str = common_constants.UNKNOWN
 
 
 # Configuration for the HuggingFace dataset initializer.
@@ -330,3 +330,27 @@ class Initializer:
 
     dataset: Optional[Union[HuggingFaceDatasetInitializer, DataCacheInitializer]] = None
     model: Optional[HuggingFaceModelInitializer] = None
+
+
+# TODO (andreyvelich): Add train() and optimize() methods to this class.
+@dataclass
+class TrainJobTemplate:
+    """TrainJob template configuration.
+
+    Args:
+        trainer (`CustomTrainer`): Configuration for a CustomTrainer.
+        runtime (`Optional[Runtime]`): Optional, reference to one of the existing runtimes. Defaults
+            to the torch-distributed runtime if not provided.
+        initializer (`Optional[Initializer]`): Optional configuration for the dataset and model
+            initializers.
+    """
+
+    trainer: CustomTrainer
+    runtime: Optional[Runtime] = None
+    initializer: Optional[Initializer] = None
+
+    def keys(self):
+        return ["trainer", "runtime", "initializer"]
+
+    def __getitem__(self, key):
+        return getattr(self, key)

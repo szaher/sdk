@@ -31,8 +31,9 @@ import uuid
 from kubeflow_trainer_api import models
 import pytest
 
+from kubeflow.common.types import KubernetesBackendConfig
 from kubeflow.trainer.backends.kubernetes.backend import KubernetesBackend
-from kubeflow.trainer.backends.kubernetes.types import KubernetesBackendConfig
+import kubeflow.trainer.backends.kubernetes.utils as utils
 from kubeflow.trainer.constants import constants
 from kubeflow.trainer.test.common import (
     DEFAULT_NAMESPACE,
@@ -43,7 +44,6 @@ from kubeflow.trainer.test.common import (
     TestCase,
 )
 from kubeflow.trainer.types import types
-from kubeflow.trainer.utils import utils
 
 # In all tests runtime name is equal to the framework name.
 TORCH_RUNTIME = "torch"
