@@ -71,6 +71,29 @@ TrainerClient().wait_for_job_status(job_id)
 print("\n".join(TrainerClient().get_job_logs(name=job_id)))
 ```
 
+## Local Development
+
+Kubeflow Trainer client supports local development without needing a Kubernetes cluster.
+
+### Available Backends
+
+- **KubernetesBackend** (default) - Production training on Kubernetes
+- **ContainerBackend** - Local development with Docker/Podman isolation  
+- **LocalProcessBackend** - Quick prototyping with Python subprocesses
+
+**Quick Start:**
+Install container support: `pip install kubeflow[docker]` or `pip install kubeflow[podman]`
+
+```python
+from kubeflow.trainer import TrainerClient, ContainerBackendConfig, CustomTrainer
+
+# Switch to local container execution
+client = TrainerClient(backend_config=ContainerBackendConfig())
+
+# Your training runs locally in isolated containers
+job_id = client.train(trainer=CustomTrainer(func=train_fn))
+```
+
 ## Supported Kubeflow Projects
 
 | Project                     | Status           | Version Support | Description                                                          |
