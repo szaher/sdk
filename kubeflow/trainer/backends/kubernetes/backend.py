@@ -629,18 +629,21 @@ class KubernetesBackend(RuntimeBackend):
             if "args" in trainer_overrides:
                 trainer_cr.args = trainer_overrides["args"]
 
-        return models.TrainerV1alpha1TrainJobSpec(
+        trainjob_spec = models.TrainerV1alpha1TrainJobSpec(
             runtimeRef=models.TrainerV1alpha1RuntimeRef(name=runtime.name),
-            trainer=(trainer_cr if trainer_cr != models.TrainerV1alpha1Trainer() else None),
-            initializer=(
-                models.TrainerV1alpha1Initializer(
-                    dataset=utils.get_dataset_initializer(initializer.dataset),
-                    model=utils.get_model_initializer(initializer.model),
-                )
-                if isinstance(initializer, types.Initializer)
-                else None
-            ),
+            trainer=trainer_cr if trainer_cr != models.TrainerV1alpha1Trainer() else None,
             labels=spec_labels,
             annotations=spec_annotations,
             pod_template_overrides=pod_template_overrides,
         )
+
+        # Add initializer if users define it.
+        if initializer and (initializer.dataset or initializer.model):
+            trainjob_spec.initializer = models.TrainerV1alpha1Initializer(
+                dataset=utils.get_dataset_initializer(initializer.dataset)
+                if initializer.dataset
+                else None,
+                model=utils.get_model_initializer(initializer.model) if initializer.model else None,
+            )
+
+        return trainjob_spec
