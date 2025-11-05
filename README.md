@@ -21,10 +21,10 @@ ML applications rather than managing complex infrastrutcure.
 
 <div style="text-align: center;">
   <img
-    src="https://raw.githubusercontent.com/kubeflow/sdk/main/docs/images/persona_diagram.svg"
+    src="https://raw.githubusercontent.com/kubeflow/sdk/main/docs/images/kubeflow-sdk.drawio.svg"
     width="600"
-    title="Kubeflow SDK Personas"
-    alt="Kubeflow SDK Personas"
+    title="Kubeflow SDK Diagram"
+    alt="Kubeflow SDK Diagram"
   />
 </div>
 
@@ -39,9 +39,9 @@ pip install -U kubeflow
 ### Run your first PyTorch distributed job
 
 ```python
-from kubeflow.trainer import TrainerClient, CustomTrainer
+from kubeflow.trainer import TrainerClient, CustomTrainer, TrainJobTemplate
 
-def get_torch_dist():
+def get_torch_dist(learning_rate: str, num_epochs: str):
     import os
     import torch
     import torch.distributed as dist
@@ -52,23 +52,50 @@ def get_torch_dist():
     print(f"RANK: {dist.get_rank()}")
     print(f"LOCAL_RANK: {os.environ['LOCAL_RANK']}")
 
-# Create the TrainJob
-job_id = TrainerClient().train(
+    lr = float(learning_rate)
+    epochs = int(num_epochs)
+    loss = 1.0 - (lr * 2) - (epochs * 0.01)
+
+    if dist.get_rank() == 0:
+        print(f"loss={loss}")
+
+# Create the TrainJob template
+template = TrainJobTemplate(
     runtime=TrainerClient().get_runtime("torch-distributed"),
     trainer=CustomTrainer(
         func=get_torch_dist,
+        func_args={"learning_rate": "0.01", "num_epochs": "5"},
         num_nodes=3,
-        resources_per_node={
-            "cpu": 2,
-        },
+        resources_per_node={"cpu": 2},
     ),
 )
+
+# Create the TrainJob
+job_id = TrainerClient().train(**template)
 
 # Wait for TrainJob to complete
 TrainerClient().wait_for_job_status(job_id)
 
 # Print TrainJob logs
 print("\n".join(TrainerClient().get_job_logs(name=job_id)))
+```
+
+### Optimize hyperparameters for your training
+
+```python
+from kubeflow.optimizer import OptimizerClient, Search, TrialConfig
+
+# Create OptimizationJob with the same template
+optimization_id = OptimizerClient().optimize(
+    trial_template=template,
+    trial_config=TrialConfig(num_trials=10, parallel_trials=2),
+    search_space={
+        "learning_rate": Search.loguniform(0.001, 0.1),
+        "num_epochs": Search.choice([5, 10, 15]),
+    },
+)
+
+print(f"OptimizationJob created: {optimization_id}")
 ```
 
 ## Local Development
@@ -99,7 +126,7 @@ job_id = client.train(trainer=CustomTrainer(func=train_fn))
 | Project                     | Status           | Version Support | Description                                                          |
 | --------------------------- | ---------------- | --------------- | -------------------------------------------------------------------- |
 | **Kubeflow Trainer**        | ✅ **Available** | v2.0.0+         | Train and fine-tune AI models with various frameworks                |
-| **Kubeflow Katib**          | 🚧 Planned       | TBD             | Hyperparameter optimization                                          |
+| **Kubeflow Katib**          | ✅ **Available** | v0.19.0+        | Hyperparameter optimization                                          |
 | **Kubeflow Pipelines**      | 🚧 Planned       | TBD             | Build, run, and track AI workflows                                   |
 | **Kubeflow Model Registry** | 🚧 Planned       | TBD             | Manage model artifacts, versions and ML artifacts metadata           |
 | **Kubeflow Spark Operator** | 🚧 Planned       | TBD             | Manage Spark applications for data processing and feature engineering |
