@@ -17,8 +17,14 @@ from typing import Any, Optional
 
 from kubeflow.common.types import KubernetesBackendConfig
 from kubeflow.optimizer.backends.kubernetes.backend import KubernetesBackend
+from kubeflow.optimizer.constants import constants
 from kubeflow.optimizer.types.algorithm_types import BaseAlgorithm
-from kubeflow.optimizer.types.optimization_types import Objective, OptimizationJob, TrialConfig
+from kubeflow.optimizer.types.optimization_types import (
+    Objective,
+    OptimizationJob,
+    Trial,
+    TrialConfig,
+)
 from kubeflow.trainer.types.types import TrainJobTemplate
 
 logger = logging.getLogger(__name__)
@@ -112,6 +118,55 @@ class OptimizerClient:
         """
 
         return self.backend.get_job(name=name)
+
+    def wait_for_job_status(
+        self,
+        name: str,
+        status: set[str] = {constants.OPTIMIZATION_JOB_COMPLETE},
+        timeout: int = 3600,
+        polling_interval: int = 2,
+    ) -> OptimizationJob:
+        """Wait for an OptimizationJob to reach a desired status.
+
+        Args:
+            name: Name of the OptimizationJob.
+            status: Expected statuses. Must be a subset of Created, Running, Complete, and
+                Failed statuses.
+            timeout: Maximum number of seconds to wait for the OptimizationJob to reach one of the
+                expected statuses.
+            polling_interval: The polling interval in seconds to check OptimizationJob status.
+
+        Returns:
+            An OptimizationJob object that reaches the desired status.
+
+        Raises:
+            ValueError: The input values are incorrect.
+            RuntimeError: Failed to get OptimizationJob or OptimizationJob reaches unexpected
+                Failed status.
+            TimeoutError: Timeout to wait for OptimizationJob status.
+        """
+        return self.backend.wait_for_job_status(
+            name=name,
+            status=status,
+            timeout=timeout,
+            polling_interval=polling_interval,
+        )
+
+    def get_best_trial(self, name: str) -> Optional[Trial]:
+        """Get the current best Trial for an OptimizationJob.
+
+        Args:
+            name: Name of the OptimizationJob.
+
+        Returns:
+            The current best Trial with parameters, metrics, and associated TrainJob.
+            Returns None if the best trial is not available yet.
+
+        Raises:
+            TimeoutError: Timeout to get OptimizationJob.
+            RuntimeError: Failed to get OptimizationJob.
+        """
+        return self.backend.get_best_trial(name=name)
 
     def delete_job(self, name: str):
         """Delete the OptimizationJob.

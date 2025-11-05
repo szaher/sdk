@@ -16,6 +16,7 @@ import logging
 import multiprocessing
 import random
 import string
+import time
 from typing import Any, Optional
 import uuid
 
@@ -208,7 +209,122 @@ class KubernetesBackend(RuntimeBackend):
 
     def get_job(self, name: str) -> OptimizationJob:
         """Get the OptimizationJob object"""
+        optimization_job = self.__get_experiment_cr(name)
+        return self.__get_optimization_job_from_cr(optimization_job)
 
+    def wait_for_job_status(
+        self,
+        name: str,
+        status: set[str] = {constants.OPTIMIZATION_JOB_COMPLETE},
+        timeout: int = 3600,
+        polling_interval: int = 2,
+    ) -> OptimizationJob:
+        job_statuses = {
+            constants.OPTIMIZATION_JOB_CREATED,
+            constants.OPTIMIZATION_JOB_RUNNING,
+            constants.OPTIMIZATION_JOB_COMPLETE,
+            constants.OPTIMIZATION_JOB_FAILED,
+        }
+
+        if not status.issubset(job_statuses):
+            raise ValueError(f"Expected status {status} must be a subset of {job_statuses}")
+
+        if polling_interval > timeout:
+            raise ValueError(
+                f"Polling interval {polling_interval} must be less than timeout: {timeout}"
+            )
+
+        for _ in range(round(timeout / polling_interval)):
+            optimization_job = self.get_job(name)
+            logger.debug(
+                f"{constants.OPTIMIZATION_JOB_KIND} {name}, status {optimization_job.status}"
+            )
+
+            if (
+                constants.OPTIMIZATION_JOB_FAILED not in status
+                and optimization_job.status == constants.OPTIMIZATION_JOB_FAILED
+            ):
+                raise RuntimeError(f"{constants.OPTIMIZATION_JOB_KIND} {name} is Failed")
+
+            if optimization_job.status in status:
+                return optimization_job
+
+            time.sleep(polling_interval)
+
+        raise TimeoutError(
+            f"Timeout waiting for {constants.OPTIMIZATION_JOB_KIND} {name} to reach status: "
+            f"{status}"
+        )
+
+    def get_best_trial(self, name: str) -> Optional[Trial]:
+        """Get the best current Trial for the OptimizationJob"""
+        optimization_job = self.__get_experiment_cr(name)
+
+        # Get the best trial from currentOptimalTrial
+        if (
+            optimization_job.status
+            and optimization_job.status.current_optimal_trial
+            and optimization_job.status.current_optimal_trial.best_trial_name
+        ):
+            best_trial_name = optimization_job.status.current_optimal_trial.best_trial_name
+
+            parameters = {}
+            if optimization_job.status.current_optimal_trial.parameter_assignments:
+                parameters = {
+                    pa.name: pa.value
+                    for pa in optimization_job.status.current_optimal_trial.parameter_assignments
+                    if pa.name is not None and pa.value is not None
+                }
+
+            metrics = []
+            if (
+                optimization_job.status.current_optimal_trial.observation
+                and optimization_job.status.current_optimal_trial.observation.metrics
+            ):
+                metrics = [
+                    Metric(name=m.name, latest=m.latest, max=m.max, min=m.min)
+                    for m in optimization_job.status.current_optimal_trial.observation.metrics
+                    if m.name is not None
+                    and m.latest is not None
+                    and m.max is not None
+                    and m.min is not None
+                ]
+
+            trainjob = self.trainer_backend.get_job(name=best_trial_name)
+
+            return Trial(
+                name=best_trial_name,
+                parameters=parameters,
+                metrics=metrics,
+                trainjob=trainjob,
+            )
+
+        return None
+
+    def delete_job(self, name: str):
+        """Delete the OptimizationJob"""
+
+        try:
+            self.custom_api.delete_namespaced_custom_object(
+                constants.GROUP,
+                constants.VERSION,
+                self.namespace,
+                constants.EXPERIMENT_PLURAL,
+                name=name,
+            )
+        except multiprocessing.TimeoutError as e:
+            raise TimeoutError(
+                f"Timeout to delete {constants.OPTIMIZATION_JOB_KIND}: {self.namespace}/{name}"
+            ) from e
+        except Exception as e:
+            raise RuntimeError(
+                f"Failed to delete {constants.OPTIMIZATION_JOB_KIND}: {self.namespace}/{name}"
+            ) from e
+
+        logger.debug(f"{constants.OPTIMIZATION_JOB_KIND} {self.namespace}/{name} has been deleted")
+
+    def __get_experiment_cr(self, name: str) -> models.V1beta1Experiment:
+        """Get the Experiment CR from Kubernetes API"""
         try:
             thread = self.custom_api.get_namespaced_custom_object(
                 constants.GROUP,
@@ -232,29 +348,7 @@ class KubernetesBackend(RuntimeBackend):
                 f"Failed to get {constants.OPTIMIZATION_JOB_KIND}: {self.namespace}/{name}"
             ) from e
 
-        return self.__get_optimization_job_from_cr(optimization_job)  # type: ignore
-
-    def delete_job(self, name: str):
-        """Delete the OptimizationJob"""
-
-        try:
-            self.custom_api.delete_namespaced_custom_object(
-                constants.GROUP,
-                constants.VERSION,
-                self.namespace,
-                constants.EXPERIMENT_PLURAL,
-                name=name,
-            )
-        except multiprocessing.TimeoutError as e:
-            raise TimeoutError(
-                f"Timeout to delete {constants.OPTIMIZATION_JOB_KIND}: {self.namespace}/{name}"
-            ) from e
-        except Exception as e:
-            raise RuntimeError(
-                f"Failed to delete {constants.OPTIMIZATION_JOB_KIND}: {self.namespace}/{name}"
-            ) from e
-
-        logger.debug(f"{constants.OPTIMIZATION_JOB_KIND} {self.namespace}/{name} has been deleted")
+        return optimization_job
 
     def __get_optimization_job_from_cr(
         self,
