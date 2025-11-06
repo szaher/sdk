@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from collections.abc import Iterator
 import logging
 import multiprocessing
 import random
@@ -211,6 +212,42 @@ class KubernetesBackend(RuntimeBackend):
         """Get the OptimizationJob object"""
         optimization_job = self.__get_experiment_cr(name)
         return self.__get_optimization_job_from_cr(optimization_job)
+
+    def get_job_logs(
+        self,
+        name: str,
+        trial_name: Optional[str] = None,
+        follow: bool = False,
+    ) -> Iterator[str]:
+        """Get the OptimizationJob logs from a Trial"""
+        # Determine what trial to get logs from.
+        if trial_name is None:
+            # Get logs from the best current trial.
+            best_trial = self.get_best_trial(name)
+            if best_trial is None:
+                # Get first trial if available.
+                optimization_job = self.get_job(name)
+                if not optimization_job.trials:
+                    return
+                trial_name = optimization_job.trials[0].name
+            else:
+                trial_name = best_trial.name
+            logger.debug(f"Getting logs from trial: {trial_name}")
+
+        # Get the Trial's Pod name.
+        pod_name = None
+        step = trainer_constants.NODE + "-0"
+        for c in self.trainer_backend.get_job(trial_name).steps:
+            if c.status != trainer_constants.POD_PENDING and c.name == step:
+                pod_name = c.pod_name
+                break
+        if pod_name is None:
+            return
+
+        container_name = constants.METRICS_COLLECTOR_CONTAINER
+        yield from self.trainer_backend._read_pod_logs(
+            pod_name=pod_name, container_name=container_name, follow=follow
+        )
 
     def wait_for_job_status(
         self,

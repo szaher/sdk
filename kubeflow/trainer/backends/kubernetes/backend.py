@@ -347,31 +347,9 @@ class KubernetesBackend(RuntimeBackend):
 
         # Remove the number for the node step.
         container_name = re.sub(r"-\d+$", "", step)
-        try:
-            if follow:
-                log_stream = watch.Watch().stream(
-                    self.core_api.read_namespaced_pod_log,
-                    name=pod_name,
-                    namespace=self.namespace,
-                    container=container_name,
-                    follow=True,
-                )
-
-                # Stream logs incrementally.
-                yield from log_stream  # type: ignore
-            else:
-                logs = self.core_api.read_namespaced_pod_log(
-                    name=pod_name,
-                    namespace=self.namespace,
-                    container=container_name,
-                )
-
-                yield from logs.splitlines()
-
-        except Exception as e:
-            raise RuntimeError(
-                f"Failed to read logs for the pod {self.namespace}/{pod_name}"
-            ) from e
+        yield from self._read_pod_logs(
+            pod_name=pod_name, container_name=container_name, follow=follow
+        )
 
     def wait_for_job_status(
         self,
@@ -465,6 +443,34 @@ class KubernetesBackend(RuntimeBackend):
                 runtime_cr.spec.ml_policy,
             ),
         )
+
+    def _read_pod_logs(self, pod_name: str, container_name: str, follow: bool) -> Iterator[str]:
+        """Read logs from a pod container."""
+        try:
+            if follow:
+                log_stream = watch.Watch().stream(
+                    self.core_api.read_namespaced_pod_log,
+                    name=pod_name,
+                    namespace=self.namespace,
+                    container=container_name,
+                    follow=True,
+                )
+
+                # Stream logs incrementally.
+                yield from log_stream  # type: ignore
+            else:
+                logs = self.core_api.read_namespaced_pod_log(
+                    name=pod_name,
+                    namespace=self.namespace,
+                    container=container_name,
+                )
+
+                yield from logs.splitlines()
+
+        except Exception as e:
+            raise RuntimeError(
+                f"Failed to read logs for the pod {self.namespace}/{pod_name}"
+            ) from e
 
     def __get_trainjob_from_cr(
         self,

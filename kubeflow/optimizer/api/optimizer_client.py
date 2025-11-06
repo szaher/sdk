@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from collections.abc import Iterator
 import logging
 from typing import Any, Optional
 
@@ -118,6 +119,46 @@ class OptimizerClient:
         """
 
         return self.backend.get_job(name=name)
+
+    def get_job_logs(
+        self,
+        name: str,
+        trial_name: Optional[str] = None,
+        follow: bool = False,
+    ) -> Iterator[str]:
+        """Get logs from a specific trial of an OptimizationJob.
+
+        You can watch for the logs in realtime as follows:
+        ```python
+        from kubeflow.optimizer import OptimizerClient
+
+        # Get logs from the best current trial
+        for logline in OptimizerClient().get_job_logs(name="n7fb28dbee94"):
+            print(logline)
+
+        # Get logs from a specific trial
+        for logline in OptimizerClient().get_job_logs(
+            name="n7fb28dbee94", trial_name="n7fb28dbee94-abc123", follow=True
+        ):
+            print(logline)
+        ```
+
+        Args:
+            name: Name of the OptimizationJob.
+            trial_name: Optional name of a specific Trial. If not provided, logs from the
+                current best trial are returned. If no best trial is available yet, logs
+                from the first trial are returned.
+            follow: Whether to stream logs in realtime as they are produced.
+
+        Returns:
+            Iterator of log lines.
+
+
+        Raises:
+            TimeoutError: Timeout to get an OptimizationJob.
+            RuntimeError: Failed to get an OptimizationJob.
+        """
+        return self.backend.get_job_logs(name=name, trial_name=trial_name, follow=follow)
 
     def wait_for_job_status(
         self,
