@@ -33,6 +33,8 @@ import kubeflow.common.utils as common_utils
 from kubeflow.trainer.backends.base import RuntimeBackend
 import kubeflow.trainer.backends.kubernetes.utils as utils
 from kubeflow.trainer.constants import constants
+from kubeflow.trainer.livetrainer.types import LiveTrainer
+import kubeflow.trainer.livetrainer.utils as live_trainer_utils
 from kubeflow.trainer.types import types
 
 logger = logging.getLogger(__name__)
@@ -278,6 +280,7 @@ class KubernetesBackend(RuntimeBackend):
         trainer: types.CustomTrainer
         | types.CustomTrainerContainer
         | types.BuiltinTrainer
+        | LiveTrainer
         | None = None,
         options: list | None = None,
     ) -> str:
@@ -754,6 +757,7 @@ class KubernetesBackend(RuntimeBackend):
         trainer: types.CustomTrainer
         | types.CustomTrainerContainer
         | types.BuiltinTrainer
+        | LiveTrainer
         | None = None,
         trainer_overrides: dict[str, Any] | None = None,
         spec_labels: dict[str, str] | None = None,
@@ -785,10 +789,17 @@ class KubernetesBackend(RuntimeBackend):
                     runtime, trainer, initializer
                 )
 
+            # If users choose to use a LiveTrainer for hot-reloading.
+            elif isinstance(trainer, LiveTrainer):
+                if runtime.trainer.trainer_type != types.TrainerType.CUSTOM_TRAINER:
+                    raise ValueError(f"LiveTrainer can't be used with {runtime} runtime")
+                trainer_cr = live_trainer_utils.get_trainer_cr_from_live_trainer(runtime, trainer)
+
             else:
                 raise ValueError(
                     f"The trainer type {type(trainer)} is not supported. "
-                    "Please use CustomTrainer, CustomTrainerContainer, or BuiltinTrainer."
+                    "Please use CustomTrainer, CustomTrainerContainer, BuiltinTrainer, "
+                    "or LiveTrainer."
                 )
 
         # Apply trainer overrides if trainer was not provided but overrides exist

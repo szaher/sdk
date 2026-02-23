@@ -27,6 +27,9 @@ from kubeflow.trainer.backends.localprocess.types import LocalProcessBackendConf
 # Import the Kubeflow Trainer constants.
 from kubeflow.trainer.constants.constants import DATASET_PATH, MODEL_PATH
 
+# Import the Kubeflow LiveTrainer types.
+from kubeflow.trainer.livetrainer.types import LiveTrainer, SyncConfig
+
 # Import the Kubeflow Trainer types.
 from kubeflow.trainer.types.types import (
     BuiltinTrainer,
@@ -78,5 +81,7 @@ __all__ = [
     "LocalProcessBackendConfig",
     "ContainerBackendConfig",
     "KubernetesBackendConfig",
+    "LiveTrainer",
+    "SyncConfig",
     "TrainingRuntimeSource",
 ]

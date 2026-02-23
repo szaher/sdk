@@ -24,6 +24,7 @@ from kubeflow.trainer.backends.localprocess.backend import (
     LocalProcessBackendConfig,
 )
 from kubeflow.trainer.constants import constants
+from kubeflow.trainer.livetrainer.types import LiveTrainer
 from kubeflow.trainer.types import types
 
 logger = logging.getLogger(__name__)
@@ -105,6 +106,7 @@ class TrainerClient:
         trainer: types.CustomTrainer
         | types.CustomTrainerContainer
         | types.BuiltinTrainer
+        | LiveTrainer
         | None = None,
         options: list | None = None,
     ) -> str:
@@ -116,14 +118,16 @@ class TrainerClient:
             the training process.
         - BuiltinTrainer: Uses a predefined trainer with built-in post-training logic, requiring
             only parameter configuration.
+        - LiveTrainer: Runs training with a user-defined function that supports hot-reloading
+            of hyperparameters via a shared volume YAML config file during training.
 
         Args:
             runtime: Optional reference to one of the existing runtimes. It can accept the runtime
                 name or Runtime object from the `get_runtime()` API.
                 Defaults to the torch-distributed runtime if not provided.
             initializer: Optional configuration for the dataset and model initializers.
-            trainer: Optional configuration for a CustomTrainer, CustomTrainerContainer, or
-                BuiltinTrainer. If not specified, the TrainJob will use the
+            trainer: Optional configuration for a CustomTrainer, CustomTrainerContainer,
+                BuiltinTrainer, or LiveTrainer. If not specified, the TrainJob will use the
                 runtime's default values.
             options: Optional list of configuration options to apply to the TrainJob.
                 Options can be imported from kubeflow.trainer.options.
