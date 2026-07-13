@@ -787,19 +787,17 @@ difference explicitly.
 
 ### F. Config-Driven LLM Trainers
 
-Section C leaves the concrete `ConfigTrainer` subclasses to follow-up work: "Concrete
-config-driven trainers extend `ConfigTrainer`. These are **not part of this proposal's
-implementation scope** — they will be proposed in follow-up KEPs." This section populates
-that branch. It adds no new abstraction to the `BaseTrainer` / `FuncTrainer` /
-`ConfigTrainer` hierarchy. It specifies the two concrete config-driven trainers the LLM
-post-training use case requires (`TorchTuneTrainer`, `TRLTrainer`), the two SDK internals
-that must change so that a config-driven framework other than TorchTune can be expressed at
-all, and the registry through which frameworks outside the SDK tree register themselves.
+Section C defers the concrete `ConfigTrainer` subclasses to follow-up KEPs. This section
+takes up two of them, and adds no new abstraction to the `BaseTrainer` / `FuncTrainer` /
+`ConfigTrainer` hierarchy. It specifies the two config-driven trainers the LLM post-training
+use case needs (`TorchTuneTrainer`, `TRLTrainer`), the two SDK internals that must change
+before any config-driven framework other than TorchTune can be expressed at all, and the
+registry through which frameworks outside the SDK tree register themselves.
 
 #### Current Coupling to TorchTune
 
-TorchTune is not merely the default config-driven framework; it is the only one the SDK can
-represent, and it is hardcoded at four points:
+TorchTune is the only config-driven framework the SDK can represent. It is hardcoded at four
+points:
 
 | # | Coupling | Location |
 |---|---|---|
@@ -808,20 +806,18 @@ represent, and it is hardcoded at four points:
 | 3 | `trainer_type` and the container entrypoint are both selected by string-comparing the runtime's framework label against that single derived constant | `kubeflow/trainer/backends/kubernetes/utils.py:114-119`, `:140-148` |
 | 4 | Config-to-argument translation is guarded by an `isinstance` check against `TorchTuneConfig` and delegates to a TorchTune-only emitter | `utils.py:451-452`, `:473-527` |
 
-Coupling #3 is the one that matters most, and it is the least visible of the four.
-`trainer_type` is **not** a field on the Runtime CR and is not read
-from it; it is *computed* in the SDK as `BUILTIN_TRAINER if framework == types.TORCH_TUNE
-else CUSTOM_TRAINER`. A runtime labelled `trainer.kubeflow.org/framework: trl` therefore
+Coupling #3 matters most and is the least visible. `trainer_type` is not a field on the
+Runtime CR and is not read from it; the SDK computes it as `BUILTIN_TRAINER if framework ==
+types.TORCH_TUNE else CUSTOM_TRAINER`. A runtime labelled `trainer.kubeflow.org/framework: trl` therefore
 resolves to `CUSTOM_TRAINER` today, and `ConfigTrainer.validate_runtime()` — which requires
 `TrainerType.BUILTIN_TRAINER` — would reject it. The same is true of
 `RuntimeTrainer.command`, which is synthesized by the `if framework == types.TORCH_TUNE`
 chain at `utils.py:140-148` and falls through to `TORCH_COMMAND` (the `CustomTrainer`
 function-exec script) for any other framework. Without a change to `get_runtime_trainer()`,
-no config-driven trainer other than TorchTune can run, regardless of how the type hierarchy
-is arranged. Specifying that change is the substantive content of this section.
+no config-driven trainer other than TorchTune can run, however the type hierarchy is arranged.
+That change is what this section specifies.
 
-The motivation is not hypothetical. Active development on TorchTune was stopped effective
-immediately on 15 July 2025 ([meta-pytorch/torchtune#2883](https://github.com/meta-pytorch/torchtune/issues/2883));
+Active development on TorchTune stopped on 15 July 2025 ([meta-pytorch/torchtune#2883](https://github.com/meta-pytorch/torchtune/issues/2883));
 no new features were added, and the announced commitment to critical bug fixes and security
 patches ran only through the end of 2025. The Kubeflow integration exposes supervised
 fine-tuning alone. Preference optimization and reinforcement-learning post-training are not
@@ -847,13 +843,13 @@ under an `LLMTrainer` ABC *parallel* to `BaseTrainer`, on the grounds that forci
 a single ABC creates dead methods (`get_train_func()` returning `None`) and Liskov
 Substitution Principle violations.
 
-That objection holds against a `BaseTrainer` that itself declares `get_train_func()`. It does
-not apply to the hierarchy as specified here, for a reason worth stating precisely.
+That objection holds against a `BaseTrainer` that declares `get_train_func()` itself. It does
+not apply to the hierarchy specified here.
 
 The problem it names is real: a subclass that inherits `get_train_func()` only to return
 `None` has been handed an operation that is meaningless for it, and clients are pushed into
-value tests (`if trainer.get_train_func() is None`) instead of type tests. The remedy is to
-segregate the interface, and that is exactly what
+value tests (`if trainer.get_train_func() is None`) instead of type tests. The fix is to
+segregate the interface, which is what
 [Alternative #5](#5-flat-hierarchy-all-trainers-inherit-directly-from-basetrainer) already
 records as this proposal's reason for introducing the intermediate layer. It rejects the flat
 hierarchy because "Config-driven trainers would carry `get_train_func()` returning `None` —
@@ -861,32 +857,29 @@ semantically incorrect and error-prone", and because "Backend dispatch would rel
 checks (`if trainer.get_train_func() is None`) instead of type checks
 (`isinstance(trainer, ConfigTrainer)`)".
 
-Once that split exists, a parallel ABC is a remedy for a problem that no longer has a cause.
-`func`, `func_args`, `get_train_func()` and `get_train_func_args()` live on `FuncTrainer`.
+With the split in place, a parallel ABC solves a problem that no longer exists. `func`,
+`func_args`, `get_train_func()` and `get_train_func_args()` live on `FuncTrainer`.
 `BaseTrainer` carries `supported_frameworks`, `num_nodes`, `resources_per_node`, `image`,
-`get_framework_args()` and `validate_runtime()` — every one of which a config-driven trainer
-genuinely has. Substitutability holds in the sense that matters: every client of
-`BaseTrainer` (`_resolve_runtime()`, `_build_trainer_cr()`) invokes only those members and
-narrows by `isinstance` to reach mode-specific behavior, so no `BaseTrainer` client can call
-an operation a `ConfigTrainer` cannot honor.
+`get_framework_args()` and `validate_runtime()`, all of which a config-driven trainer has.
+Every client of `BaseTrainer` (`_resolve_runtime()`, `_build_trainer_cr()`) calls only those
+members and narrows by `isinstance` to reach mode-specific behavior, so no `BaseTrainer`
+client can call an operation a `ConfigTrainer` cannot honor.
 
-One caveat should be conceded rather than glossed. `ConfigTrainer.validate_runtime()`
-*narrows* a precondition: it rejects `CUSTOM_TRAINER` runtimes that
-`BaseTrainer.validate_runtime()` would accept. This is defensible because the base contract
-is "raise if the runtime is incompatible with this trainer," and a subclass refining what
-*incompatible* means is a refinement of the contract, not a breach of it — but it is the one
-place in the hierarchy where a subclass is stricter than its base, and `FuncTrainer` does the
-same thing symmetrically.
+One caveat: `ConfigTrainer.validate_runtime()` narrows a precondition, rejecting
+`CUSTOM_TRAINER` runtimes that `BaseTrainer.validate_runtime()` would accept. The base
+contract is "raise if the runtime is incompatible with this trainer", so a subclass refining
+what *incompatible* means is a refinement rather than a breach — but it is the one place a
+subclass is stricter than its base, and `FuncTrainer` does the same thing symmetrically.
 
-The dividend of one root is concrete. `train(trainer=...)` keeps a single union rather than
+Keeping one root pays off directly. `train(trainer=...)` keeps a single union rather than
 gaining a second root type in six signatures across five files (`api/trainer_client.py:110-113`,
 `backends/base.py:45-47`, `backends/kubernetes/backend.py:279-280` and `:753-756`,
 `backends/localprocess/backend.py:76-77`, `backends/container/backend.py:261-262`). Runtime
-auto-discovery, `supported_frameworks` preference ordering, and `validate_runtime()` are
-implemented once. And the trainer↔runtime compatibility check that today lives in the backend
-as an `isinstance` chain (`backends/kubernetes/backend.py:770-789`) is absorbed by
-`validate_runtime()`, where it applies uniformly to every trainer, so that
-`runtime.trainer.trainer_type` is validated and not only the framework label.
+auto-discovery, `supported_frameworks` preference ordering and `validate_runtime()` are
+implemented once. The trainer/runtime compatibility check that lives in the backend today as
+an `isinstance` chain (`backends/kubernetes/backend.py:770-789`) moves into
+`validate_runtime()`, where it applies to every trainer, so `runtime.trainer.trainer_type` is
+validated and not only the framework label.
 
 #### Config-Driven Runtime Resolution
 
