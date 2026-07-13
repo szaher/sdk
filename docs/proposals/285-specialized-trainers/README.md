@@ -42,6 +42,16 @@ Directory: docs/proposals/285-specialized-trainers/README.md
       - [BuiltinTrainer Migration Path](#builtintrainer-migration-path)
     - [D. RuntimeConfig](#d-runtimeconfig)
     - [E. TrainerClient Changes](#e-trainerclient-changes)
+    - [F. Config-Driven LLM Trainers](#f-config-driven-llm-trainers)
+      - [Current Coupling to TorchTune](#current-coupling-to-torchtune)
+      - [Placement Under BaseTrainer](#placement-under-basetrainer)
+      - [Config-Driven Runtime Resolution](#config-driven-runtime-resolution)
+      - [Trainer Registry and the Out-of-Tree Extension Path](#trainer-registry-and-the-out-of-tree-extension-path)
+      - [Field Ordering Under Inheritance](#field-ordering-under-inheritance)
+      - [TorchTuneTrainer](#torchtunetrainer)
+      - [TRLTrainer](#trltrainer)
+      - [Why TRL as the First In-Tree Config-Driven Framework](#why-trl-as-the-first-in-tree-config-driven-framework)
+      - [BuiltinTrainer After This Proposal](#builtintrainer-after-this-proposal)
   - [Design Details](#design-details)
     - [Runtime Auto-Discovery](#runtime-auto-discovery)
     - [Runtime Validation](#runtime-validation)
@@ -774,6 +784,582 @@ fields remain on `CustomTrainer` but `RuntimeConfig` is the preferred mechanism)
 This distinction is intentional: existing code must not change behavior, while new
 trainer types benefit from auto-discovery. The `train()` docstring documents this
 difference explicitly.
+
+### F. Config-Driven LLM Trainers
+
+Section C leaves the concrete `ConfigTrainer` subclasses to follow-up work: "Concrete
+config-driven trainers extend `ConfigTrainer`. These are **not part of this proposal's
+implementation scope** — they will be proposed in follow-up KEPs." This section populates
+that branch. It adds no new abstraction to the `BaseTrainer` / `FuncTrainer` /
+`ConfigTrainer` hierarchy. It specifies the two concrete config-driven trainers the LLM
+post-training use case requires (`TorchTuneTrainer`, `TRLTrainer`), the two SDK internals
+that must change so that a config-driven framework other than TorchTune can be expressed at
+all, and the registry through which frameworks outside the SDK tree register themselves.
+
+#### Current Coupling to TorchTune
+
+TorchTune is not merely the default config-driven framework; it is the only one the SDK can
+represent, and it is hardcoded at four points:
+
+| # | Coupling | Location |
+|---|---|---|
+| 1 | `BuiltinTrainer.config` is annotated with the concrete `TorchTuneConfig` type | `kubeflow/trainer/types/types.py:226-236` |
+| 2 | The framework identifier is derived by reflecting on that annotation: `BuiltinTrainer.__annotations__["config"].__name__.lower().replace("config", "")`, yielding `"torchtune"`. The code's own comment reads "Change it to list: BUILTIN_CONFIGS, once we support more Builtin Trainer configs." | `types.py:239-240` |
+| 3 | `trainer_type` and the container entrypoint are both selected by string-comparing the runtime's framework label against that single derived constant | `kubeflow/trainer/backends/kubernetes/utils.py:114-119`, `:140-148` |
+| 4 | Config-to-argument translation is guarded by an `isinstance` check against `TorchTuneConfig` and delegates to a TorchTune-only emitter | `utils.py:451-452`, `:473-527` |
+
+Coupling #3 is the one that matters most, and it is the least visible of the four.
+`trainer_type` is **not** a field on the Runtime CR and is not read
+from it; it is *computed* in the SDK as `BUILTIN_TRAINER if framework == types.TORCH_TUNE
+else CUSTOM_TRAINER`. A runtime labelled `trainer.kubeflow.org/framework: trl` therefore
+resolves to `CUSTOM_TRAINER` today, and `ConfigTrainer.validate_runtime()` — which requires
+`TrainerType.BUILTIN_TRAINER` — would reject it. The same is true of
+`RuntimeTrainer.command`, which is synthesized by the `if framework == types.TORCH_TUNE`
+chain at `utils.py:140-148` and falls through to `TORCH_COMMAND` (the `CustomTrainer`
+function-exec script) for any other framework. Without a change to `get_runtime_trainer()`,
+no config-driven trainer other than TorchTune can run, regardless of how the type hierarchy
+is arranged. Specifying that change is the substantive content of this section.
+
+The motivation is not hypothetical. Active development on TorchTune was stopped effective
+immediately on 15 July 2025 ([meta-pytorch/torchtune#2883](https://github.com/meta-pytorch/torchtune/issues/2883));
+no new features were added, and the announced commitment to critical bug fixes and security
+patches ran only through the end of 2025. The Kubeflow integration exposes supervised
+fine-tuning alone. Preference optimization and reinforcement-learning post-training are not
+reachable through the SDK at all.
+
+#### Placement Under BaseTrainer
+
+The function-driven versus config-driven distinction this proposal now encodes was worked out
+in the review of this PR: @tariq-hasan framed the placement question for config-driven
+post-training trainers, @szaher proposed the `FuncTrainer` / `ConfigTrainer` split that the
+current revision adopts, and @astefanutti established that
+`trainer.kubeflow.org/framework` should remain the discovery key while users stay able to
+bring their own runtimes, frameworks and trainers.
+
+[KEP-2839](https://github.com/kubeflow/trainer/pull/3263) (@NarayanaSabari) is the direct
+groundwork for this section: it was the first to write the config-driven side up as a
+concrete design. It enumerated the TorchTune coupling points, specified a `command` ClassVar
+and a `to_args()` rendering method for trainers whose entrypoint is a framework CLI, and
+showed `TorchTuneConfig` becoming a `TorchTuneTrainer` with a backward-compatible
+`BuiltinTrainer` alias. The `command` / `to_args()` shape specified below is taken from it.
+Its final revision — a direction reached with @tariq-hasan — placed config-driven trainers
+under an `LLMTrainer` ABC *parallel* to `BaseTrainer`, on the grounds that forcing them under
+a single ABC creates dead methods (`get_train_func()` returning `None`) and Liskov
+Substitution Principle violations.
+
+That objection holds against a `BaseTrainer` that itself declares `get_train_func()`. It does
+not apply to the hierarchy as specified here, for a reason worth stating precisely.
+
+The problem it names is real: a subclass that inherits `get_train_func()` only to return
+`None` has been handed an operation that is meaningless for it, and clients are pushed into
+value tests (`if trainer.get_train_func() is None`) instead of type tests. The remedy is to
+segregate the interface, and that is exactly what
+[Alternative #5](#5-flat-hierarchy-all-trainers-inherit-directly-from-basetrainer) already
+records as this proposal's reason for introducing the intermediate layer. It rejects the flat
+hierarchy because "Config-driven trainers would carry `get_train_func()` returning `None` —
+semantically incorrect and error-prone", and because "Backend dispatch would rely on runtime
+checks (`if trainer.get_train_func() is None`) instead of type checks
+(`isinstance(trainer, ConfigTrainer)`)".
+
+Once that split exists, a parallel ABC is a remedy for a problem that no longer has a cause.
+`func`, `func_args`, `get_train_func()` and `get_train_func_args()` live on `FuncTrainer`.
+`BaseTrainer` carries `supported_frameworks`, `num_nodes`, `resources_per_node`, `image`,
+`get_framework_args()` and `validate_runtime()` — every one of which a config-driven trainer
+genuinely has. Substitutability holds in the sense that matters: every client of
+`BaseTrainer` (`_resolve_runtime()`, `_build_trainer_cr()`) invokes only those members and
+narrows by `isinstance` to reach mode-specific behavior, so no `BaseTrainer` client can call
+an operation a `ConfigTrainer` cannot honor.
+
+One caveat should be conceded rather than glossed. `ConfigTrainer.validate_runtime()`
+*narrows* a precondition: it rejects `CUSTOM_TRAINER` runtimes that
+`BaseTrainer.validate_runtime()` would accept. This is defensible because the base contract
+is "raise if the runtime is incompatible with this trainer," and a subclass refining what
+*incompatible* means is a refinement of the contract, not a breach of it — but it is the one
+place in the hierarchy where a subclass is stricter than its base, and `FuncTrainer` does the
+same thing symmetrically.
+
+The dividend of one root is concrete. `train(trainer=...)` keeps a single union rather than
+gaining a second root type in six signatures across five files (`api/trainer_client.py:110-113`,
+`backends/base.py:45-47`, `backends/kubernetes/backend.py:279-280` and `:753-756`,
+`backends/localprocess/backend.py:76-77`, `backends/container/backend.py:261-262`). Runtime
+auto-discovery, `supported_frameworks` preference ordering, and `validate_runtime()` are
+implemented once. And the trainer↔runtime compatibility check that today lives in the backend
+as an `isinstance` chain (`backends/kubernetes/backend.py:770-789`) is absorbed by
+`validate_runtime()`, where it applies uniformly to every trainer, so that
+`runtime.trainer.trainer_type` is validated and not only the framework label.
+
+#### Config-Driven Runtime Resolution
+
+`ConfigTrainer` gains one class attribute and one concrete method. Neither is a new abstract
+method; `get_config()` remains the only abstraction a subclass must supply.
+
+```python
+# kubeflow/trainer/types/types.py
+
+@dataclass(kw_only=True)
+class ConfigTrainer(BaseTrainer):
+    """Base class for config-driven trainers. (Additions to section C.)"""
+
+    command: ClassVar[tuple[str, ...]] = ()
+
+    def to_args(self, initializer: Optional["Initializer"] = None) -> list[str]:
+        """Render the config as entrypoint arguments.
+
+        The default renders each entry of ``get_config()`` as a flat
+        ``key=value`` override. Frameworks whose CLI uses a different convention
+        override this method; TorchTune's overrides are nested
+        (``model.lora_rank=...``), so `TorchTuneTrainer` overrides it too and
+        delegates to the existing emitter.
+
+        Args:
+            initializer: The job's initializer, when the framework's arguments
+                depend on where the dataset or model was staged.
+        """
+        return [f"{key}={value}" for key, value in self.get_config().items()]
+```
+
+**Design decisions:**
+
+- **`command` is a `ClassVar` on the trainer, not a constant in `constants.py`.** The
+  entrypoint of a config-driven job is a property of the framework's CLI (`("tune", "run")`,
+  `("trl",)`), and the trainer class is the only place that knows it. This retires the
+  `if framework == types.TORCH_TUNE` entrypoint chain at `utils.py:140-148` for the
+  config-driven path: `get_runtime_trainer()` looks the framework label up in the registry
+  below and calls `set_command(trainer_cls.command)`. `constants.TORCH_TUNE_COMMAND`
+  (`constants.py:179`), whose only consumer is that branch (`utils.py:142`), is deleted with
+  it. The `FuncTrainer` path
+  (`TORCH_COMMAND` / `MPI_COMMAND` / `DEFAULT_COMMAND`, selected from `ml_policy`) is
+  untouched.
+- **`trainer_type` is derived from the registry, not from a framework constant.**
+  `get_runtime_trainer()` assigns `TrainerType.BUILTIN_TRAINER` when the runtime's framework
+  label is claimed by a registered `ConfigTrainer` subclass, and `TrainerType.CUSTOM_TRAINER`
+  otherwise. This replaces `utils.py:114-119` and deletes the reflection-derived
+  `types.TORCH_TUNE` constant (`types.py:239-240`) along with its only consumers. No new
+  runtime label, annotation, or CRD field is introduced: `trainer.kubeflow.org/framework`
+  remains the sole discovery key, honoring [Non-Goal #2](#non-goals).
+- **`to_args()` takes the initializer.** Today's TorchTune emitter derives
+  `dataset.data_files=` / `dataset.data_dir=` from the Hugging Face dataset initializer
+  (`utils.py:502-517`). A rendering method that could not see the initializer would silently
+  lose that behavior.
+- **Rendering moves to the trainer, which amends [Backend Integration](#backend-integration).**
+  The `ConfigTrainer` branch of `_build_trainer_cr` becomes
+  `trainer_cr.command = list(runtime.trainer.command)` and
+  `trainer_cr.args = trainer.to_args(initializer)`, replacing the inline
+  `[f"{k}={v}" for k, v in trainer.get_config().items()]`. This is a one-time change to the
+  backend, and it is what makes the proposal's stated property — that adding a *further*
+  trainer requires no backend changes — true for frameworks whose CLI does not use `key=value`
+  overrides. `get_framework_args()` retains the meaning section C gives it: framework
+  arguments merged into the rendered config; the default `to_args()` renders
+  `get_config()`, which for `ConfigTrainer` already defaults to the same dictionary.
+
+#### Trainer Registry and the Out-of-Tree Extension Path
+
+The requirement @astefanutti stated in this PR's review is that the SDK stay extensible —
+"users can bring their own runtimes / frameworks / trainers" — with
+`trainer.kubeflow.org/framework` kept as the discovery key, and @andreyvelich's follow-up
+asked how new LLM fine-tuning framework backends would be registered dynamically. The SDK has
+no mechanism for this today: backends are wired by a hardcoded
+`isinstance` chain (`api/trainer_client.py:56-63`), `kubeflow/trainer/backends/__init__.py`
+is empty, and `pyproject.toml` declares no entry points.
+
+The registry introduced here is deliberately narrow. It maps a **framework label value** to a
+**`ConfigTrainer` subclass**, and it exists to serve exactly one lookup: the one performed by
+`get_runtime_trainer()` above, which must know whether a given framework label is
+config-driven and, if so, what its entrypoint is. It is not an execution backend. Dispatch of
+a trainer the user has already constructed remains polymorphic — a third party ships
+`class MyTrainer(ConfigTrainer)`, the user imports it and passes it to `train()`, and no
+lookup is required.
+
+```python
+# kubeflow/trainer/types/registry.py
+
+from importlib.metadata import entry_points
+from typing import Optional
+
+_CONFIG_TRAINERS: dict[str, type["ConfigTrainer"]] = {}
+_discovered = False
+
+
+def register_config_trainer(cls: type["ConfigTrainer"]) -> type["ConfigTrainer"]:
+    """Claim the framework labels declared in `cls.supported_frameworks`."""
+    if not cls.supported_frameworks:
+        raise ValueError(f"{cls.__name__} must declare supported_frameworks")
+    if not cls.command:
+        raise ValueError(f"{cls.__name__} must declare a command")
+    for framework in cls.supported_frameworks:
+        _CONFIG_TRAINERS[framework] = cls
+    return cls
+
+
+def get_config_trainer(framework: str) -> Optional[type["ConfigTrainer"]]:
+    """Return the ConfigTrainer claiming this framework label, or None.
+
+    Third-party trainers are discovered lazily, on the first lookup that misses
+    the in-tree registrations.
+    """
+    # Imported inside the function: `types.py` imports `register_config_trainer`
+    # from this module, so a module-scope import here would be a cycle.
+    from kubeflow.trainer.types.types import ConfigTrainer
+
+    global _discovered
+    if framework not in _CONFIG_TRAINERS and not _discovered:
+        _discovered = True
+        for entry_point in entry_points(group="kubeflow.trainer.config_trainers"):
+            candidate = entry_point.load()
+            if not (isinstance(candidate, type) and issubclass(candidate, ConfigTrainer)):
+                raise ValueError(
+                    f"Entry point '{entry_point.name}' in group "
+                    f"'kubeflow.trainer.config_trainers' must resolve to a "
+                    f"ConfigTrainer subclass, got {candidate!r}"
+                )
+            register_config_trainer(candidate)
+    return _CONFIG_TRAINERS.get(framework)
+```
+
+**Design decisions:**
+
+- **Prior art.** @krishdef7 proposed a registry of this shape in this PR's review
+  (`@register_backend(TRLConfig)`), keyed on the trainer's config type. This section keys the
+  registry on the framework label instead, because the lookup that needs it —
+  `get_runtime_trainer()` — starts from a Runtime CR and has only the label to go on; the
+  config type is not in scope at that point.
+- **The registry is keyed on the label value, not on the label's storage.** If
+  `trainer.kubeflow.org/framework` is later promoted from a label to a Runtime API spec
+  field, the change is confined to the single accessor that supplies `framework` to
+  `get_runtime_trainer()`.
+- **Discovery is lazy and fails loudly.** The `importlib.metadata` scan is paid only on a
+  registry miss, and a miss after discovery returns `None`, which `get_runtime_trainer()`
+  reads as "this runtime is function-driven" — the existing default. An entry point that
+  does not resolve to a `ConfigTrainer` subclass raises rather than being silently ignored.
+- **Registration is last-writer-wins on the framework label.** An out-of-tree trainer whose
+  `supported_frameworks` claims an in-tree label shadows the in-tree class for that label.
+  That is the ambient entry-point convention, and it is deliberate: it lets a community fork
+  of a stalled framework replace the in-tree trainer without an upstream commit. It is not a
+  security boundary — installing a plugin is a trust decision. Raising on a duplicate claim
+  was rejected because the collision surfaces inside the discovery scan, which would turn one
+  conflicting plugin into a hard failure of every registry lookup, including lookups for
+  unrelated labels.
+- **In-tree and out-of-tree trainers use the same mechanism.** `TorchTuneTrainer` and
+  `TRLTrainer` are registered with `@register_config_trainer`; a third party declares an
+  entry point in the `kubeflow.trainer.config_trainers` group and `pip install`s. This is
+  the mechanism behind the Graduation Criteria item "Community has contributed at least one
+  Tier 2 `ConfigTrainer` subclass," and it is what makes that criterion reachable without an
+  upstream commit. The natural install story reuses the existing extras convention
+  (`docker`, `podman`, `spark`, `hub`): `pip install kubeflow[trl]`.
+- **In-tree registration runs at import time.** `@register_config_trainer` populates the
+  registry as a side effect of importing the module that defines the trainer.
+  `TorchTuneTrainer` lives in `types.py`, which `utils.py` already imports, so it registers
+  unconditionally. `TRLTrainer` lives in a new module, so `kubeflow/trainer/__init__.py` must
+  export it: without that export, a process that never imports it — `list_runtimes()` on a
+  fresh client, say — finds no claimant for the `trl` label and classifies the runtime as
+  function-driven.
+- **LlamaFactory is the reference out-of-tree implementation, not a second in-tree backend.**
+  LlamaFactory is built on the Hugging Face `Trainer` and PEFT — the same engine TRL uses — so
+  an in-tree integration would add a second surface without adding capability. Implementing it
+  as an external plugin is the proof that the extension path works with no upstream
+  cooperation.
+- **Python floor.** `entry_points(group=...)` selection and `@dataclass(kw_only=True)` both
+  require Python 3.10, which the SDK already declares (`requires-python = ">=3.10"`).
+
+#### Field Ordering Under Inheritance
+
+The whole hierarchy — `BaseTrainer`, `FuncTrainer`, `ConfigTrainer` and every concrete
+trainer — is declared `@dataclass(kw_only=True)`. This amends the illustrative blocks in
+sections A–C, which show a bare `@dataclass`: read every new trainer decorator there as
+`@dataclass(kw_only=True)`. `BaseTrainer` declares `num_nodes`, `resources_per_node` and
+`image` with defaults, so without `kw_only` no subclass could declare a non-defaulted field —
+`FuncTrainer.func` and `TorchTuneTrainer.config` would both raise `TypeError: non-default
+argument follows default argument` at class-definition time. The alternative (defaulting every
+field to `None` and enforcing required-ness at runtime) would forfeit the static-analysis
+benefit that motivates typed trainers. `CustomTrainer`, `BuiltinTrainer` and `TorchTuneConfig`
+keep their bare `@dataclass` declarations: their construction signatures are public API and do
+not change.
+
+#### TorchTuneTrainer
+
+`TorchTuneTrainer` is not new capability. It is the mechanical replacement for the four
+TorchTune coupling points listed at the top of this section, and removing that coupling
+requires it. Together with `TRLTrainer` it supersedes the deferral in
+[Non-Goal #4](#non-goals) for these two frameworks only; Transformers, Unsloth and Axolotl
+remain out of scope and stay reachable through the registry above.
+
+```python
+# kubeflow/trainer/types/types.py
+# Additional imports: `from dataclasses import asdict`,
+# `from kubeflow.trainer.types import torchtune`,
+# `from kubeflow.trainer.types.registry import register_config_trainer`
+
+@register_config_trainer
+@dataclass(kw_only=True)
+class TorchTuneTrainer(ConfigTrainer):
+    """Config-driven trainer for TorchTune recipes.
+
+    The preferred form of `BuiltinTrainer(config=TorchTuneConfig(...))`.
+    """
+
+    supported_frameworks: ClassVar[tuple[str, ...]] = ("torchtune",)
+    command: ClassVar[tuple[str, ...]] = ("tune", "run")
+
+    config: TorchTuneConfig
+
+    def get_config(self) -> dict:
+        return asdict(self.config)
+
+    def to_args(self, initializer: Optional["Initializer"] = None) -> list[str]:
+        """Preserve the existing TorchTune override rendering exactly."""
+        return torchtune.get_args_using_torchtune_config(self.config, initializer)
+```
+
+**Design decisions:**
+
+- **`supported_frameworks` is `("torchtune",)`, refining section C's sketch.** Section C
+  sketches `("torch",)`, but the runtime label value matched by the SDK today is `torchtune`
+  (`types.TORCH_TUNE == "torchtune"`, `types.py:239-240`, compared against the
+  `trainer.kubeflow.org/framework` label defined at `constants.py:61-62`). With `("torch",)`,
+  auto-discovery would match the `torch-distributed` runtime, which is function-driven, and
+  `validate_runtime()` would then reject it.
+- **`to_args()` delegates to the existing emitter rather than to the default `key=value`
+  renderer.** `get_args_from_peft_config` (`utils.py:530-559`) maps `LoraConfig` fields
+  through a `field_map` onto `model.*` TorchTune keys and renders
+  `model.lora_attn_modules=[...]`; a flat `key=value` walk over `asdict()` would emit
+  `lora_rank=8` instead of `model.lora_rank=8` and produce a job that fails. Behavior is
+  preserved byte-for-byte by reusing the emitter. The three emitters
+  (`get_args_using_torchtune_config`, `get_args_from_peft_config`,
+  `get_args_from_dataset_preprocess_config`, `utils.py:473-601`) are moved verbatim from
+  `kubeflow/trainer/backends/kubernetes/utils.py` to `kubeflow/trainer/types/torchtune.py`.
+  They contain no Kubernetes-specific logic, and leaving them in the backend would make
+  `types.py` import a backend module — a cycle, since `utils.py` already imports `types`.
+- **Duplicate scaling fields.** `TorchTuneConfig` carries its own `num_nodes` and
+  `resources_per_node` (`types.py:191-222`), which now also exist on `BaseTrainer`. The
+  merge happens in `_build_trainer_cr`, which already reads both fields off `BaseTrainer`:
+  the fields on the trainer take precedence, and the `TorchTuneConfig` duplicates are promoted
+  only when the trainer's are unset. Neither field is ever rendered into `args` — the TorchTune
+  emitter does not emit them today, and `TorchTuneTrainer.to_args()` reuses it verbatim. The
+  duplicates follow the same schedule as `BuiltinTrainer`: no change in Alpha, `FutureWarning`
+  in Beta, formal deprecation at GA.
+
+#### TRLTrainer
+
+```python
+# kubeflow/trainer/types/trl.py
+
+from dataclasses import dataclass, fields
+from enum import Enum
+from typing import ClassVar, Optional
+
+from kubeflow.trainer.types.registry import register_config_trainer
+from kubeflow.trainer.types.types import BaseTrainer, ConfigTrainer, Initializer
+
+
+class TRLMethod(Enum):
+    """Post-training method; the value is the TRL CLI subcommand."""
+
+    SFT = "sft"
+    DPO = "dpo"
+    GRPO = "grpo"
+
+
+@register_config_trainer
+@dataclass(kw_only=True)
+class TRLTrainer(ConfigTrainer):
+    """Config-driven trainer for Hugging Face TRL post-training.
+
+    The runtime entrypoint is the TRL CLI, which forwards to `accelerate launch`.
+
+    Raises:
+        ValueError: If a field is set that does not apply to the selected method.
+    """
+
+    supported_frameworks: ClassVar[tuple[str, ...]] = ("trl",)
+    command: ClassVar[tuple[str, ...]] = ("trl",)
+
+    method: TRLMethod
+    model_name_or_path: str
+    dataset_name: str
+
+    learning_rate: Optional[float] = None
+    num_train_epochs: Optional[int] = None
+    per_device_train_batch_size: Optional[int] = None
+    bf16: Optional[bool] = None
+
+    use_peft: Optional[bool] = None
+    lora_r: Optional[int] = None
+    lora_alpha: Optional[int] = None
+    lora_target_modules: Optional[list[str]] = None
+
+    beta: Optional[float] = None                    # DPO, GRPO
+    num_generations: Optional[int] = None           # GRPO
+    reward_funcs: Optional[list[str]] = None        # GRPO
+
+    # Fields valid only for a subset of methods. Fields absent from this map
+    # are valid for every method.
+    _METHOD_SCOPED_FIELDS: ClassVar[dict[str, frozenset[TRLMethod]]] = {
+        "beta": frozenset({TRLMethod.DPO, TRLMethod.GRPO}),
+        "num_generations": frozenset({TRLMethod.GRPO}),
+        "reward_funcs": frozenset({TRLMethod.GRPO}),
+    }
+
+    def __post_init__(self) -> None:
+        self.validate()
+
+    def validate(self) -> None:
+        """Enforce method-scoped field usage.
+
+        Raises:
+            ValueError: If a field is set for a method it does not apply to, or
+                if a field the selected method requires is unset.
+        """
+        for name, methods in self._METHOD_SCOPED_FIELDS.items():
+            if getattr(self, name) is not None and self.method not in methods:
+                allowed = ", ".join(sorted(m.value for m in methods))
+                raise ValueError(
+                    f"'{name}' applies only to method={allowed}, but "
+                    f"method={self.method.value} was selected"
+                )
+        if self.method is TRLMethod.GRPO and not self.reward_funcs:
+            raise ValueError("method=grpo requires at least one entry in 'reward_funcs'")
+
+    def get_config(self) -> dict:
+        """Return the TRL CLI options, omitting unset and non-CLI fields."""
+        excluded = {"method"} | {f.name for f in fields(BaseTrainer)}
+        return {
+            f.name: getattr(self, f.name)
+            for f in fields(self)
+            if f.name not in excluded and getattr(self, f.name) is not None
+        }
+
+    def to_args(self, initializer: Optional["Initializer"] = None) -> list[str]:
+        """Render as `[<subcommand>, --flag, value, ...]` for the TRL CLI."""
+        args: list[str] = [self.method.value]
+        for key, value in self.get_config().items():
+            if value is True:
+                args.append(f"--{key}")           # store_true flag
+            elif isinstance(value, list):
+                args.append(f"--{key}")
+                args.extend(str(item) for item in value)
+            else:
+                args.append(f"--{key}")
+                args.append(str(value))
+        return args
+```
+
+`TRLTrainer(method=TRLMethod.SFT, model_name_or_path="Qwen/Qwen2.5-0.5B",
+dataset_name="stanfordnlp/imdb")` renders to:
+
+```python
+trainer_cr.command = ["trl"]                       # from TRLTrainer.command
+trainer_cr.args = [
+    "sft",
+    "--model_name_or_path", "Qwen/Qwen2.5-0.5B",
+    "--dataset_name", "stanfordnlp/imdb",
+]
+```
+
+**Design decisions:**
+
+- **Framework arguments land in `.spec.trainer.args`.** They are produced entirely by
+  `ConfigTrainer.to_args()`, against a `.spec.trainer.command` taken from the trainer's
+  `command` `ClassVar`. There is no interaction with `MLPolicy`-injected arguments on this
+  path, because a config-driven runtime's entrypoint is the framework CLI rather than a
+  launcher the control plane parameterizes; the SDK contributes no launch flags of its own.
+  Scaling is unaffected: `num_nodes` and `resources_per_node` are written to
+  `.spec.trainer.numNodes` / `.spec.trainer.resourcesPerNode` by `_build_trainer_cr` and are
+  never rendered into `args`, which is the contract `tune run` already relies on. Translating
+  that topology into the environment `accelerate launch` reads is the `trl` runtime image's
+  responsibility, not the SDK's.
+- **`to_args()` does not consume the initializer.** `model_name_or_path` and `dataset_name`
+  are passed through verbatim, so the `trl` CLI resolves them itself. TorchTune's emitter
+  rewrites `dataset.data_dir=` / `dataset.data_files=` from a `HuggingFaceDatasetInitializer`
+  (`utils.py:502-517`) because the recipe reads a local directory; there is no equivalent
+  rewrite for the model on any path today, and `constants.MODEL_PATH` is never emitted into
+  trainer arguments. Combining `TRLTrainer` with a Hugging Face initializer therefore stages
+  artifacts the `trl` CLI does not read. Wiring `constants.DATASET_PATH` / `constants.MODEL_PATH`
+  into TRL's flags depends on the `trl` runtime image's entrypoint contract, which this
+  proposal does not specify; it is deferred with that runtime.
+- **`LoraConfig` is deliberately not reused.** `LoraConfig` (`types.py:152-187`) is
+  TorchTune-shaped: `apply_lora_to_mlp`, `apply_lora_to_output`, `quantize_base`, `use_dora`,
+  and module names drawn from TorchTune's model definitions. TRL's PEFT surface is
+  `--use_peft`, `--lora_r`, `--lora_alpha`, `--lora_target_modules`; `apply_lora_to_output`
+  and `quantize_base` have no TRL analogue. Sharing the type across two frameworks with
+  non-overlapping semantics would require a lossy translation layer, so the TRL flags are
+  declared directly on `TRLTrainer`.
+- **This answers [Open Question #2](#open-questions).** Rather than making `get_config()`
+  return an opaque typed object, the trainer itself is the typed object: every TRL flag is a
+  statically checked field with IDE completion, semantic constraints the type system cannot
+  express are enforced in `validate()` at construction time, and `get_config()` stays the
+  plain-`dict` seam the rendering path consumes.
+- **Unsloth is a `TRLTrainer` concern, not a sibling class.** Unsloth is an acceleration
+  layer over the Hugging Face `Trainer`: its models are passed directly to TRL's `SFTTrainer`
+  and `DPOTrainer`. Modelling it as the `ConfigTrainer` sibling section C sketches would
+  duplicate the entire TRL field set to express a runtime optimization. It belongs in the
+  runtime image: an Unsloth-accelerated image is still labelled
+  `trainer.kubeflow.org/framework: trl`, so it is discovered by the same registry entry,
+  validated by the unmodified `TRLTrainer`, and selected with `train(runtime=...)`. No SDK
+  field is added — `get_config()` renders every non-`None` field as a CLI flag, and
+  `--use_unsloth` is not one.
+
+#### Why TRL as the First In-Tree Config-Driven Framework
+
+| Framework | Post-training methods | Maintenance | Entrypoint |
+|---|---|---|---|
+| TRL | `sft`, `dpo`, `grpo`, `kto`, `reward`, `rloo` on the stable CLI; PPO moved to `trl.experimental` and removed from `trl.trainer` in 0.29 ([huggingface/trl#4466](https://github.com/huggingface/trl/issues/4466)) | Actively maintained by Hugging Face | `trl <method> --flag value`, or `--config <yaml>`; forwards to `accelerate launch` |
+| TorchTune | SFT only, in the Kubeflow integration | Active development stopped 15 July 2025; critical fixes committed only through end of 2025 ([#2883](https://github.com/meta-pytorch/torchtune/issues/2883)) | `tune run` |
+| LlamaFactory | Broad, but built on the Hugging Face `Trainer` and PEFT | Active | `llamafactory-cli train <config.yaml>` |
+| Axolotl | Broad (SFT, DPO, KTO, GRPO), but built on the Hugging Face `Trainer` and PEFT | Active | `axolotl train <config.yaml>` — file-first, so the recipe must be materialized into the container |
+| Unsloth | None of its own; an acceleration layer | Active | No independent CLI |
+
+TRL is selected on three grounds. Its stable CLI covers the methods the SDK cannot express at
+all today: preference optimization (DPO) and group-relative policy optimization (GRPO). It is
+the substrate rather than a wrapper — LlamaFactory and Axolotl are both built on the Hugging
+Face `Trainer` and PEFT, so an in-tree TRL trainer adds capability where an in-tree wrapper
+would add a second surface over the same engine, which is why LlamaFactory is the reference
+out-of-tree plugin above. And its CLI takes flags (`trl <subcommand> --flag value`), so it maps
+onto `TrainJob` `command` and `args` with no adapter and no YAML recipe to materialize into the
+container; a file-first CLI (`axolotl train <config.yaml>`, `llamafactory-cli train
+<config.yaml>`) would need a ConfigMap or a volume. `TRLTrainer(method=TRLMethod.GRPO, ...)`
+therefore replaces an untyped YAML recipe with a statically checked dataclass — a benefit
+`FuncTrainer` subclasses cannot offer, since there the training code is the user's own and the
+trainer's contribution is runtime compatibility.
+
+**Risk:** TRL's surface is not frozen. PPO's relocation to `trl.experimental` shows that
+trainers migrate between the stable and experimental namespaces across minor releases, and a
+typed SDK dataclass that mirrors TRL flags will drift. Three properties bound the damage.
+`TRLTrainer` targets the CLI, not the Python API, and re-implements no TRL semantics — it is
+a flag renderer, so a TRL upgrade changes the runtime image rather than the SDK type. It
+exposes only `TRLMethod` members that are on TRL's stable CLI, and widening coverage to `kto`,
+`reward` or `rloo` is an enum member plus fields. And the registry confines any framework's
+churn to that framework's trainer class: TRL's instability cannot reach TorchTune, and neither
+can reach `FuncTrainer`.
+
+#### BuiltinTrainer After This Proposal
+
+`BaseTrainer` is the foundation for the builtins. The public `BuiltinTrainer` API is
+preserved exactly and requires no user-visible change; the internals it depends on are the
+four coupling points enumerated at the top of this section, and all four are replaced.
+
+| Aspect | Before | After |
+|---|---|---|
+| User entry point | `BuiltinTrainer(config=TorchTuneConfig(...))` | Unchanged and fully supported; `TorchTuneTrainer(config=TorchTuneConfig(...))` is the preferred form |
+| Dispatch of `BuiltinTrainer` | `isinstance` chain in the backend (`backend.py:770-789`) | `TrainerClient.train()` converts it to `TorchTuneTrainer(config=trainer.config)` and dispatches through the `ConfigTrainer` path |
+| Framework identifier | Reflected from the `config` annotation (`types.py:239-240`) | `supported_frameworks` `ClassVar`; the reflection-derived `types.TORCH_TUNE` constant is deleted, so no second source of truth remains |
+| `trainer_type` selection | `framework == types.TORCH_TUNE` (`utils.py:114-119`) | Registry lookup on the framework label |
+| Entrypoint selection | `if framework == types.TORCH_TUNE` chain (`utils.py:140-148`) | `ConfigTrainer.command` `ClassVar` |
+| Config→args translation | `isinstance(trainer.config, TorchTuneConfig)` guard and a TorchTune-only emitter (`utils.py:451-452`, `:473-527`) | `ConfigTrainer.to_args()`; `TorchTuneTrainer` reuses the same emitter, so output is identical |
+| trainer↔runtime validation | Backend (`backend.py:770-789`) | `ConfigTrainer.validate_runtime()` |
+| `TorchTuneConfig`, `LoraConfig`, `TorchTuneInstructDataset` | Exported from `kubeflow.trainer` | Unchanged, still exported |
+| Adding a framework | Edit `types.py` and `utils.py` | Subclass `ConfigTrainer`, register it, in-tree or via entry point |
+
+The deprecation schedule is the one already stated in
+[BuiltinTrainer Migration Path](#builtintrainer-migration-path) and
+[Migration and Backward Compatibility](#migration-and-backward-compatibility): no change in
+Alpha, a `FutureWarning` pointing at `TorchTuneTrainer` in Beta, formal deprecation at GA.
+Every existing TorchTune program continues to run unmodified and produces byte-identical
+`TrainJob` arguments.
+
+A runtime labelled `trainer.kubeflow.org/framework: trl` is a prerequisite for `TRLTrainer`
+and is owned by the Trainer repository; this proposal does not specify it. The SDK-side
+contract is only that the label exists and that the runtime's container entrypoint is the
+`trl` CLI.
 
 ---
 
